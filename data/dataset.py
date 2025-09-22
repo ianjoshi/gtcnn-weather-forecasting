@@ -1,44 +1,43 @@
 import torch
 from torch.utils.data import Dataset
+from pathlib import Path
+import xarray as xr
+
 
 class ERA5Dataset(Dataset):
-    def __init__(self, xr_dataset, input_vars, target_var, config,
-                 input_length=7, forecast_horizon=1,
-                 split="train", load_into_ram=False):
+    def __init__(self, split, input_vars, target_var, config, load_into_ram=False):
         """
         ERA5 dataset for Graph ML.
 
         Args:
-            xr_dataset (xarray.Dataset): preprocessed ERA5 dataset
+            split (str): "train", "val", or "test"
             input_vars (list): predictor variable names
             target_var (str): target variable (e.g. "2m_temperature")
-            config (dict): data config dict, expects config["time"]
-            input_length (int): number of past timesteps to use as input
-            forecast_horizon (int): how far ahead to predict (timesteps)
-            split (str): "train", "val", or "test"
-            load_into_ram (bool): if True, loads the split into memory as numpy arrays
+            config (dict): full config dict (expects ["training"] section)
+            load_into_ram (bool): if True, load the whole split into RAM
         """
         self.input_vars = input_vars
         self.target_var = target_var
-        self.input_length = input_length
-        self.forecast_horizon = forecast_horizon
+        self.input_length = config["training"]["input_length"]
+        self.forecast_horizon = config["training"]["forecast_horizon"]
 
-        # Get time ranges from config
-        time_cfg = config["time"]
+        # Path to local cached split
+        path = Path("data/processed") / f"era5_{split}.zarr"
+        if not path.exists():
+            raise FileNotFoundError(
+                f"Could not find {path}. Did you run reduce_dataset() first?"
+            )
 
-        if split == "train":
-            subset = xr_dataset.sel(time=slice(time_cfg["train_start"], time_cfg["train_end"]))
-        elif split == "val":
-            subset = xr_dataset.sel(time=slice(time_cfg["val_start"], time_cfg["val_end"]))
-        elif split == "test":
-            subset = xr_dataset.sel(time=slice(time_cfg["test_start"], time_cfg["test_end"]))
-        else:
-            raise ValueError("split must be 'train', 'val', or 'test'")
+        print(f"Opening {split} split from {path}")
+        subset = xr.open_zarr(path, consolidated=False)
 
-        # Optionally load entire split into RAM (numpy-backed)
+        # Optionally load entire split into RAM
         if load_into_ram:
-            print(self.subset.nbytes / 1e9, "GB is being loaded into RAM for the", split, "set...")  
+            approx_size_gb = subset.nbytes / 1e9
+            print(f"Loading {split} split into RAM "
+                  f"(~{approx_size_gb:.2f} GB)...")
             subset = subset.load()
+            print(f"{split} split now in memory")
 
         self.subset = subset
         self.times = self.subset.time.values
@@ -53,7 +52,7 @@ class ERA5Dataset(Dataset):
         target_idx = end + self.forecast_horizon - 1
         target_slice = self.subset.isel(time=target_idx)
 
-        # Already in RAM if load_into_ram=True
+        # Already in memory if load_into_ram=True
         X_np = input_slice[self.input_vars].to_array().to_numpy()
         y_np = target_slice[self.target_var].to_numpy()
 

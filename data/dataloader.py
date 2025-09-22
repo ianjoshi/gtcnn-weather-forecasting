@@ -15,47 +15,40 @@ def gpu_collate_fn(device):
     return collate
 
 
-def get_dataloaders(xr_dataset, input_vars, target_var, config,
-                    input_length=7, forecast_horizon=1,
+def get_dataloaders(input_vars, target_var, config,
                     batch_size=4, num_workers=0,
                     load_into_ram=False, device=None):
     """
-    Create train/val/test dataloaders, optionally GPU-aware.
+    Create train/val/test dataloaders from local cached Zarr splits.
     """
-    train_ds = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                           input_length, forecast_horizon, split="train",
-                           load_into_ram=load_into_ram)
-    val_ds   = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                           input_length, forecast_horizon, split="val",
-                           load_into_ram=load_into_ram)
-    test_ds  = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                            input_length, forecast_horizon, split="test",
-                            load_into_ram=load_into_ram)
-    
-    print(f"Train samples: {len(train_ds)}")
-    print(f"Val samples:   {len(val_ds)}")
-    print(f"Test samples:  {len(test_ds)}")
 
-    # Default: CPU device
     if device is None:
         device = torch.device("cpu")
 
     collate = gpu_collate_fn(device)
 
+    # Make dataset objects
+    train_ds = ERA5Dataset("train", input_vars, target_var, config,
+                           load_into_ram=load_into_ram)
+    val_ds   = ERA5Dataset("val", input_vars, target_var, config,
+                           load_into_ram=load_into_ram)
+    test_ds  = ERA5Dataset("test", input_vars, target_var, config,
+                           load_into_ram=load_into_ram)
+
+    print(f"Dataset sizes -> Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")
+
+    # Wrap in DataLoaders
     train_loader = DataLoader(
         train_ds, batch_size=batch_size, shuffle=True,
-        num_workers=num_workers, pin_memory=True,
-        collate_fn=collate
+        num_workers=num_workers, pin_memory=True, collate_fn=collate
     )
     val_loader = DataLoader(
         val_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
-        collate_fn=collate
+        num_workers=num_workers, pin_memory=True, collate_fn=collate
     )
     test_loader = DataLoader(
         test_ds, batch_size=batch_size, shuffle=False,
-        num_workers=num_workers, pin_memory=True,
-        collate_fn=collate
+        num_workers=num_workers, pin_memory=True, collate_fn=collate
     )
 
     return train_loader, val_loader, test_loader
