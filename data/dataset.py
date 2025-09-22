@@ -12,7 +12,7 @@ class ERA5Dataset(Dataset):
             xr_dataset (xarray.Dataset): preprocessed ERA5 dataset
             input_vars (list): predictor variable names
             target_var (str): target variable (e.g. "2m_temperature")
-            config (dict): full config dict, expects config["data"]["time"]
+            config (dict): data config dict, expects config["time"]
             input_length (int): number of past timesteps to use as input
             forecast_horizon (int): how far ahead to predict (timesteps)
             split (str): "train", "val", or "test"
