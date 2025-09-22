@@ -24,11 +24,11 @@ data:
     lon_max: 40
   time:
     train_start: "2010-01-01"
-    train_end:   "2017-12-31"
-    val_start:   "2018-01-01"
-    val_end:     "2019-12-31"
-    test_start:  "2020-01-01"
-    test_end:    "2022-12-31"
+    train_end:   "2012-12-31"
+    val_start:   "2013-01-01"
+    val_end:     "2013-12-31"
+    test_start:  "2014-01-01"
+    test_end:    "2014-12-31"
 
 # ----- Training -----
 training:

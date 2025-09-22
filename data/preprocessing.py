@@ -44,4 +44,5 @@ def reduce_dataset(ds, cfg):
         reduced_ds = reduced_ds.sel(level=cfg["levels"])
 
     print("Reduced dataset ready!")
+
     return reduced_ds
