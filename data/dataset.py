@@ -37,7 +37,7 @@ class ERA5Dataset(Dataset):
 
         # Optionally load entire split into RAM (numpy-backed)
         if load_into_ram:
-            print(f"Loading {split} split into RAM ")
+            print(self.subset.nbytes / 1e9, "GB is being loaded into RAM for the", split, "set...")  
             subset = subset.load()
 
         self.subset = subset
