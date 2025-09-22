@@ -18,16 +18,19 @@ def gpu_collate_fn(device):
 def get_dataloaders(xr_dataset, input_vars, target_var, config,
                     input_length=7, forecast_horizon=1,
                     batch_size=4, num_workers=0,
-                    device=None):
+                    load_into_ram=False, device=None):
     """
     Create train/val/test dataloaders, optionally GPU-aware.
     """
     train_ds = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                           input_length, forecast_horizon, split="train")
+                           input_length, forecast_horizon, split="train",
+                           load_into_ram=load_into_ram)
     val_ds   = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                           input_length, forecast_horizon, split="val")
+                           input_length, forecast_horizon, split="val",
+                           load_into_ram=load_into_ram)
     test_ds  = ERA5Dataset(xr_dataset, input_vars, target_var, config,
-                            input_length, forecast_horizon, split="test")
+                            input_length, forecast_horizon, split="test",
+                            load_into_ram=load_into_ram)
     
     print(f"Train samples: {len(train_ds)}")
     print(f"Val samples:   {len(val_ds)}")
