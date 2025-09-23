@@ -1,43 +1,30 @@
 # ----- Data -----
 data:
-  dataset_url: "gs://weatherbench2/datasets/era5_daily/1959-2023_01_10-full_37-1h-0p25deg-chunk-1-s2s.zarr"
-  variables_to_keep:
-    - 2m_temperature
-    - 10m_u_component_of_wind
-    - 10m_v_component_of_wind
-    - surface_pressure
-    - total_precipitation_24hr
-    - geopotential
-    - temperature
-    - total_cloud_cover
-    - snow_depth
-    - u_component_of_wind
-    - v_component_of_wind
-  target_variable: "2m_temperature"
-  levels: [200, 500, 850]         # pressure levels to keep
-  region:
-    lat_min: 35
-    lat_max: 70
-    lon_min: -10
-    lon_max: 40
+  repo_id: "TornikeO/era5-5.625deg"
+  local_dir: "../dataset/era5_data"
+  data_paths: [
+    "../dataset/era5_data/geopotential_500/*.nc",
+    "../dataset/era5_data/temperature_850/*.nc",
+    "../dataset/era5_data/2m_temperature/*.nc",
+    "../dataset/era5_data/10m_u_component_of_wind/*.nc",
+    "../dataset/era5_data/10m_v_component_of_wind/*.nc",
+  ]
+  levels: ["z", "t", "t2m", "u10", "v10"]        
   time:
-    train_start: "2017-01-01"
-    train_end:   "2018-12-31"   # 2 years
-    val_start:   "2019-01-01"
-    val_end:     "2019-12-31"   # 1 year
-    test_start:  "2020-01-01"
-    test_end:    "2020-12-31"   # 1 year
+    train_start: "2005-01-01"
+    train_end:   "2014-12-31"
+    val_start:   "2015-01-01"
+    val_end:     "2016-12-31"
+    test_start:  "2017-01-01"
+    test_end:    "2018-12-31"
 
 # ----- Training -----
 training:
-  input_length: 7           # number of past timesteps used as input
-  forecast_horizon: 1       # how far ahead to predict (days)
   batch_size: 32
   num_workers: 4
   epochs: 50
   learning_rate: 0.001
   weight_decay: 1e-5
-  device: "cuda"            # or "cpu"
 
 # ----- Model -----
 model:

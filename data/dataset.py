@@ -1,62 +1,81 @@
 import torch
 from torch.utils.data import Dataset
-from pathlib import Path
 import xarray as xr
+import numpy as np
+from pathlib import Path
 
 
 class ERA5Dataset(Dataset):
-    def __init__(self, split, input_vars, target_var, config, load_into_ram=False):
+    def __init__(self, data_paths, levels, split, config, drop_leap=True):
         """
-        ERA5 dataset for Graph ML.
+        ERA5 dataset loader.
 
         Args:
+            data_paths (list[str]): list of glob patterns for .nc files (per variable)
+            levels (list[str]): variable names matching data_paths order
             split (str): "train", "val", or "test"
-            input_vars (list): predictor variable names
-            target_var (str): target variable (e.g. "2m_temperature")
-            config (dict): full config dict (expects ["training"] section)
-            load_into_ram (bool): if True, load the whole split into RAM
+            config (dict): config["time"] dictionary with split ranges
+            drop_leap (bool): drop Feb 29th for leap years
         """
-        self.input_vars = input_vars
-        self.target_var = target_var
-        self.input_length = config["training"]["input_length"]
-        self.forecast_horizon = config["training"]["forecast_horizon"]
+        self.levels = levels
+        self.drop_leap = drop_leap
+        self.input_length = 7
+        self.forecast_horizon = 1
 
-        # Path to local cached split
-        path = Path("data/processed") / f"era5_{split}.zarr"
-        if not path.exists():
-            raise FileNotFoundError(
-                f"Could not find {path}. Did you run reduce_dataset() first?"
-            )
+        # Pick time range
+        if split == "train":
+            time_range = slice(config["train_start"], config["train_end"])
+        elif split == "val":
+            time_range = slice(config["val_start"], config["val_end"])
+        elif split == "test":
+            time_range = slice(config["test_start"], config["test_end"])
+        else:
+            raise ValueError("split must be 'train', 'val', or 'test'")
 
-        print(f"Opening {split} split from {path}")
-        subset = xr.open_zarr(path, consolidated=False)
+        # Load and normalize each variable
+        self.data = []
+        for path, lev in zip(data_paths, levels):
+            ds = xr.open_mfdataset(path, combine="by_coords")
+            ds = ds.sel(time=time_range)
 
-        # Optionally load entire split into RAM
-        if load_into_ram:
-            approx_size_gb = subset.nbytes / 1e9
-            print(f"Loading {split} split into RAM "
-                  f"(~{approx_size_gb:.2f} GB)...")
-            subset = subset.load()
-            print(f"{split} split now in memory")
+            # Global min/max 
+            global_ds = xr.open_mfdataset(path, combine="by_coords")
+            global_ds = global_ds.sel(time=slice("2005", "2018"))
+            max_val = global_ds.max()[lev].values
+            min_val = global_ds.min()[lev].values
 
-        self.subset = subset
-        self.times = self.subset.time.values
+            arr = (ds[lev] - min_val) / (max_val - min_val)
+            arr = arr.load().values  # shape: (time, lat, lon)
+
+            if drop_leap:
+                arr = self._drop_leap_days(arr, ds["time"].values)
+
+            # Reshape to (time, 1, H, W)
+            arr = torch.from_numpy(arr).float().unsqueeze(1)
+            self.data.append(arr)
+
+        # Stack into (time, channels, H, W)
+        self.data = torch.cat(self.data, dim=1)
+
+    def _drop_leap_days(self, arr, time):
+        """Drop Feb 29 from leap years."""
+        mask = np.array(
+            [not (t.astype("datetime64[M]").astype(int) % 12 == 1
+                  and t.astype("datetime64[D]").astype(int) % 29 == 0)
+             for t in time]
+        )
+        return arr[mask]
 
     def __len__(self):
-        return len(self.times) - self.input_length - self.forecast_horizon
+        # Each sample = input_length past steps → target
+        return self.data.shape[0] - self.input_length - self.forecast_horizon
 
     def __getitem__(self, idx):
         start = idx
         end = idx + self.input_length
-        input_slice = self.subset.isel(time=slice(start, end))
         target_idx = end + self.forecast_horizon - 1
-        target_slice = self.subset.isel(time=target_idx)
 
-        # Already in memory if load_into_ram=True
-        X_np = input_slice[self.input_vars].to_array().to_numpy()
-        y_np = target_slice[self.target_var].to_numpy()
-
-        X = torch.from_numpy(X_np).float()  # (n_vars, input_length, lat, lon)
-        y = torch.from_numpy(y_np).float()  # (lat, lon)
+        X = self.data[start:end]       # (input_length, channels, H, W)
+        y = self.data[target_idx]      # (channels, H, W) or pick one channel later
 
         return X, y
