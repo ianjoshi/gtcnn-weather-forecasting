@@ -4,6 +4,8 @@ import xarray as xr
 import numpy as np
 from pathlib import Path
 
+from data.transforms import *
+
 
 class ERA5Dataset(Dataset):
     def __init__(self, data_paths, levels, split, config, drop_leap=True):
@@ -55,7 +57,10 @@ class ERA5Dataset(Dataset):
             self.data.append(arr)
 
         # Stack into (time, channels, H, W)
-        self.data = torch.cat(self.data, dim=1)
+        self.data = torch.cat(self.data, dim=1)  # (time, channels, H, W)
+
+        # Cache grid size
+        _, self.C, self.H, self.W = self.data.shape
 
     def _drop_leap_days(self, arr, time):
         """Drop Feb 29 from leap years."""
@@ -78,4 +83,8 @@ class ERA5Dataset(Dataset):
         X = self.data[start:end]       # (input_length, channels, H, W)
         y = self.data[target_idx]      # (channels, H, W) or pick one channel later
 
-        return X, y
+        # return X, y
+
+        # Convert to spatio-temporal PyG graph
+        graph = to_spatio_temporal_graph(X, y, self.H, self.W)
+        return graph
