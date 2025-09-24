@@ -1,10 +1,9 @@
-# data/transforms.py
 import torch
 from torch_geometric.data import Data
 
 
 def build_spatial_edges(H: int, W: int, periodic_lon: bool = True):
-    """Build spatial adjacency for H×W grid."""
+    """Build spatial adjacency for HxW grid."""
     edges = []
     for i in range(H):
         for j in range(W):

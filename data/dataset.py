@@ -83,8 +83,6 @@ class ERA5Dataset(Dataset):
         X = self.data[start:end]       # (input_length, channels, H, W)
         y = self.data[target_idx]      # (channels, H, W) or pick one channel later
 
-        # return X, y
-
         # Convert to spatio-temporal PyG graph
         graph = to_spatio_temporal_graph(X, y, self.H, self.W)
         return graph
