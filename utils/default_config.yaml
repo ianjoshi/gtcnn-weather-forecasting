@@ -32,7 +32,6 @@ model:
   hidden_dim: 64
   num_layers: 3
   dropout: 0.2
-  graph_connectivity: 4     # 4 = N,S,E,W ; 8 = add diagonals
 
 # ----- Logging -----
 logging:
