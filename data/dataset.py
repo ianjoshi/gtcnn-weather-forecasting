@@ -8,29 +8,40 @@ from data.transforms import *
 
 
 class ERA5Dataset(Dataset):
-    def __init__(self, data_paths, levels, split, config, drop_leap=True):
+    def __init__(self, 
+                 split, 
+                 data_paths, 
+                 levels, 
+                 time_slices, 
+                 input_length, 
+                 forecast_horizon, 
+                 neighborhood,
+                 drop_leap=True):
         """
         ERA5 dataset loader.
 
         Args:
+            split (str): "train", "val", or "test"
             data_paths (list[str]): list of glob patterns for .nc files (per variable)
             levels (list[str]): variable names matching data_paths order
-            split (str): "train", "val", or "test"
             config (dict): config["time"] dictionary with split ranges
+            input_length (int):
+            forecast_horizon (int):
             drop_leap (bool): drop Feb 29th for leap years
         """
         self.levels = levels
         self.drop_leap = drop_leap
-        self.input_length = 7
-        self.forecast_horizon = 1
+        self.input_length = input_length
+        self.forecast_horizon = forecast_horizon
+        self.neighborhood = neighborhood
 
         # Pick time range
         if split == "train":
-            time_range = slice(config["train_start"], config["train_end"])
+            time_range = slice(time_slices["train_start"], time_slices["train_end"])
         elif split == "val":
-            time_range = slice(config["val_start"], config["val_end"])
+            time_range = slice(time_slices["val_start"], time_slices["val_end"])
         elif split == "test":
-            time_range = slice(config["test_start"], config["test_end"])
+            time_range = slice(time_slices["test_start"], time_slices["test_end"])
         else:
             raise ValueError("split must be 'train', 'val', or 'test'")
 

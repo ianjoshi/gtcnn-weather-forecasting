@@ -26,6 +26,13 @@ training:
   learning_rate: 0.001
   weight_decay: 1e-5
 
+# ----- Spatio-Temporal Graph -----
+graph:
+  input_length: 7
+  forecast_horizon: 1
+  neighborhood: 4
+  type: "cartesian"    # or strong
+
 # ----- Model -----
 model:
   type: "graph"             
