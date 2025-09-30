@@ -30,16 +30,16 @@ This project uses spatio-temporal graph neural networks to perform weather forec
 ### Setup
 
 1. Clone the repository:
-```bash
-git clone https://github.com/ianjoshi/graph-ml-g12.git
-cd graph-ml-g12
-```
+    ```bash
+    git clone https://github.com/ianjoshi/graph-ml-g12.git
+    cd graph-ml-g12
+    ```
 
 2. Create and activate the conda environment:
-```bash
-conda env create -f utils/environment.yml
-conda activate weather-cast
-```
+    ```bash
+    conda env create -f utils/environment.yml
+    conda activate weather-cast
+    ```
 
 ## Data
 
