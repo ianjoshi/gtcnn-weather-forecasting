@@ -1,13 +1,13 @@
 # ----- Data -----
 data:
   repo_id: "TornikeO/era5-5.625deg"
-  local_dir: "../dataset/era5_data"
+  local_dir: "./dataset/era5_data"
   data_paths: [
-    "../dataset/era5_data/geopotential_500/*.nc",
-    "../dataset/era5_data/temperature_850/*.nc",
-    "../dataset/era5_data/2m_temperature/*.nc",
-    "../dataset/era5_data/10m_u_component_of_wind/*.nc",
-    "../dataset/era5_data/10m_v_component_of_wind/*.nc",
+    "./dataset/era5_data/geopotential_500/*.nc",
+    "./dataset/era5_data/temperature_850/*.nc",
+    "./dataset/era5_data/2m_temperature/*.nc",
+    "./dataset/era5_data/10m_u_component_of_wind/*.nc",
+    "./dataset/era5_data/10m_v_component_of_wind/*.nc",
   ]
   levels: ["z", "t", "t2m", "u10", "v10"]        
   time:
@@ -44,4 +44,3 @@ model:
 logging:
   log_dir: "runs/"
   checkpoint_dir: "checkpoints/"
-  save_every: 5             # epochs
