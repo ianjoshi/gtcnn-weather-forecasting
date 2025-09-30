@@ -13,16 +13,22 @@ def get_datasets(config):
     input_length = config["graph"]["input_length"]
     forecast_horizon = config["graph"]["forecast_horizon"]
     neighborhood = config["graph"]["neighborhood"]
+    graph_type = config["graph"]["type"]
 
     train_ds = ERA5Dataset(split="train", data_paths=data_paths, levels=levels, 
                            time_slices=time_slices, input_length=input_length, 
-                           forecast_horizon=forecast_horizon, neighborhood=neighborhood)
+                           forecast_horizon=forecast_horizon, neighborhood=neighborhood,
+                           graph_type=graph_type)
+    
     val_ds = ERA5Dataset(split="val", data_paths=data_paths, levels=levels, 
                          time_slices=time_slices, input_length=input_length, 
-                         forecast_horizon=forecast_horizon, neighborhood=neighborhood)
+                         forecast_horizon=forecast_horizon, neighborhood=neighborhood,
+                         graph_type=graph_type)
+    
     test_ds = ERA5Dataset(split="test", data_paths=data_paths, levels=levels, 
                           time_slices=time_slices, input_length=input_length, 
-                          forecast_horizon=forecast_horizon, neighborhood=neighborhood)
+                          forecast_horizon=forecast_horizon, neighborhood=neighborhood,
+                          graph_type=graph_type)
 
     print(f"Dataset sizes -> Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")
 

@@ -16,6 +16,7 @@ class ERA5Dataset(Dataset):
                  input_length, 
                  forecast_horizon, 
                  neighborhood,
+                 graph_type,
                  drop_leap=True):
         """
         ERA5 dataset loader.
@@ -34,6 +35,7 @@ class ERA5Dataset(Dataset):
         self.input_length = input_length
         self.forecast_horizon = forecast_horizon
         self.neighborhood = neighborhood
+        self.graph_type = graph_type
 
         # Pick time range
         if split == "train":
@@ -95,5 +97,5 @@ class ERA5Dataset(Dataset):
         y = self.data[target_idx]      # (channels, H, W) or pick one channel later
 
         # Convert to spatio-temporal PyG graph
-        graph = to_spatio_temporal_graph(X, y, self.H, self.W)
+        graph = to_spatio_temporal_graph(X, y, self.H, self.W, self.neighborhood, self.graph_type)
         return graph
