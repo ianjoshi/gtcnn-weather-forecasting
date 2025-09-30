@@ -46,7 +46,7 @@ class ERA5Dataset(Dataset):
         self.neighborhood = neighborhood
         self.graph_type = graph_type
 
-        # --- Select time range based on split ---
+        # Select time range based on split
         if split == "train":
             time_range = slice(time_slices["train_start"], time_slices["train_end"])
         elif split == "val":
@@ -56,7 +56,7 @@ class ERA5Dataset(Dataset):
         else:
             raise ValueError("split must be 'train', 'val', or 'test'")
 
-        # --- Load and normalize each variable ---
+        # Load and normalize each variable 
         self.data = []
         for path, lev in zip(data_paths, levels):
             # Open dataset for this variable
@@ -140,5 +140,5 @@ class ERA5Dataset(Dataset):
             neighborhood=self.neighborhood,
             graph_type=self.graph_type
         )
-        
+
         return graph
