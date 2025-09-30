@@ -12,6 +12,7 @@ def get_datasets(config):
             - config["data"]["data_paths"]: list of NetCDF file paths (one per variable)
             - config["data"]["levels"]: list of variable names (same order as data_paths)
             - config["data"]["time"]: dict with split ranges
+            - config["data"]["sample_rate"]: daily or hourly
             - config["graph"]["input_length"]: # past timesteps for input
             - config["graph"]["forecast_horizon"]: # steps ahead for prediction
             - config["graph"]["neighborhood"]: 4 or 8 (spatial neighbors)
@@ -26,6 +27,7 @@ def get_datasets(config):
     data_paths = config["data"]["data_paths"] 
     levels = config["data"]["levels"]
     time_slices = config["data"]["time"]
+    sample_rate = config["data"]["sample_rate"]
 
     input_length = config["graph"]["input_length"]
     forecast_horizon = config["graph"]["forecast_horizon"]
@@ -36,22 +38,25 @@ def get_datasets(config):
     train_ds = ERA5Dataset(
         split="train",
         data_paths=data_paths, levels=levels, time_slices=time_slices,
-        input_length=input_length, forecast_horizon=forecast_horizon,
-        neighborhood=neighborhood, graph_type=graph_type
+        sample_rate=sample_rate, input_length=input_length, 
+        forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
+        graph_type=graph_type
     )
     
     val_ds = ERA5Dataset(
         split="val",
         data_paths=data_paths, levels=levels, time_slices=time_slices,
-        input_length=input_length, forecast_horizon=forecast_horizon,
-        neighborhood=neighborhood, graph_type=graph_type
+        sample_rate=sample_rate, input_length=input_length, 
+        forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
+        graph_type=graph_type
     )
     
     test_ds = ERA5Dataset(
         split="test",
         data_paths=data_paths, levels=levels, time_slices=time_slices,
-        input_length=input_length, forecast_horizon=forecast_horizon,
-        neighborhood=neighborhood, graph_type=graph_type
+        sample_rate=sample_rate, input_length=input_length, 
+        forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
+        graph_type=graph_type
     )
 
     print(f"Dataset sizes -> Train: {len(train_ds)}, Val: {len(val_ds)}, Test: {len(test_ds)}")

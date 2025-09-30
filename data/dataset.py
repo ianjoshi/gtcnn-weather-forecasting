@@ -13,6 +13,7 @@ class ERA5Dataset(Dataset):
                  data_paths, 
                  levels, 
                  time_slices, 
+                 sample_rate,
                  input_length, 
                  forecast_horizon, 
                  neighborhood,
@@ -31,6 +32,7 @@ class ERA5Dataset(Dataset):
                 one per variable (e.g., temperature, wind).
             levels (list[str]): Variable names (must match data_paths order).
             time_slices (dict): Dict with split ranges.
+            daily_sample (str): Daily or Hourly.
             input_length (int): Number of past timesteps per input sequence.
             forecast_horizon (int): Prediction horizon in timesteps.
             neighborhood (int): Spatial neighborhood size (4 or 8).
@@ -62,6 +64,8 @@ class ERA5Dataset(Dataset):
             # Open dataset for this variable
             ds = xr.open_mfdataset(path, combine="by_coords")
             ds = ds.sel(time=time_range)
+            if sample_rate == "daily":
+                ds = ds.resample(time="1D").mean()
 
             # Compute global min/max from fixed training period
             global_ds = xr.open_mfdataset(path, combine="by_coords")
