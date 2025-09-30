@@ -2,7 +2,7 @@ import torch
 from torch_geometric.data import Data
 
 
-def _build_cartesian_edges(H: int, W: int, periodic_lon: bool = True, neighborhood: int = 4):
+def build_spatial_edges(H: int, W: int, periodic_lon: bool = True, neighborhood: int = 4):
     """Build spatial adjacency for HxW grid with 4- or 8-neighborhood."""
     edges = []
     for i in range(H):
@@ -46,12 +46,6 @@ def _build_cartesian_edges(H: int, W: int, periodic_lon: bool = True, neighborho
                     edges.append([node, (i + 1) * W + jj])
 
     return torch.tensor(edges, dtype=torch.long).t().contiguous()
-
-
-def build_spatial_edges(H: int, W: int, periodic_lon: bool = True,
-                        neighborhood: int = 4):
-    """Build spatial adjacency for HxW grid (cartesian only)."""
-    return _build_cartesian_edges(H, W, periodic_lon, neighborhood)
 
 
 def build_spatio_temporal_edges(H: int, W: int, T: int,
