@@ -17,7 +17,7 @@ data:
     val_end:     "2016-12-31"
     test_start:  "2017-01-01"
     test_end:    "2018-12-31"
-  sample_rate: "daily"
+  sample_rate: "daily"        # daily or hourly
 
 # ----- Training -----
 training:
@@ -31,8 +31,8 @@ training:
 graph:
   input_length: 7
   forecast_horizon: 1
-  neighborhood: 4
-  type: "strong"    # strong, cartesian
+  neighborhood: 4            # 4 or 8
+  type: "strong"             # strong or cartesian
 
 # ----- Model -----
 model:
