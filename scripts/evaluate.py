@@ -95,7 +95,7 @@ def initialize_model(model_config, model_type, C_in, C_out):
     if model_type == "gtcnn": 
 
         hidden_ch = model_config[model_type]["hidden_channels"] 
-        K = model_config[model_type]["K"] 
+        K = model_config[model_type]["chebyshev_order"] 
         num_layers = model_config[model_type]["num_layers"] 
         dropout = model_config[model_type]["dropout"] 
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
