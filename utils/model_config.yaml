@@ -5,9 +5,7 @@ graph_based:
     num_layers: 3
     dropout: 0.1
 
-  tikhonov:
-    regularization_strength: 1e-3   
-    solver: "cg"                    
+  tikhonov:                   
 
 grid_based:
   cnn3d:
@@ -16,7 +14,3 @@ grid_based:
     dropout: 0.1
 
   convlstm:
-    hidden_channels: [32, 64]
-    kernel_size: [3, 3]
-    num_layers: 2
-    dropout: 0.2
