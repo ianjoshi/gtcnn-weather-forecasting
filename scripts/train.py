@@ -131,8 +131,8 @@ def main():
 
     # Dataloaders
     train_loader, val_loader = get_dataloaders(config=config, model_category=category, eval_mode=False)
-    C_in = train_loader.dataset.in_channels()
-    C_out = train_loader.dataset.out_channels() 
+    C_in = train_loader.dataset.in_channels
+    C_out = train_loader.dataset.out_channels 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
