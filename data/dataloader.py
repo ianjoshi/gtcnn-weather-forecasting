@@ -3,7 +3,7 @@ from torch_geometric.loader import DataLoader
 from .dataset import ERA5Dataset
 
 
-def get_datasets(config, model_type, eval_mode=False):
+def get_datasets(config, model_category, eval_mode=False):
     """
     Create ERA5 train/val/test datasets.
 
@@ -34,9 +34,9 @@ def get_datasets(config, model_type, eval_mode=False):
     neighborhood = config["graph"]["neighborhood"]
     graph_type = config["graph"]["type"]
 
-    if model_type in ["cnn3d", "convlstm"]:
+    if model_category == "grid_based":
         graph_mode = False
-    else:
+    elif model_category == "graph_based":
         graph_mode = True
         print("Using a graph model...")
 
@@ -70,7 +70,7 @@ def get_datasets(config, model_type, eval_mode=False):
         return test_ds
 
 
-def get_dataloaders(config, model_type, eval_mode=False):
+def get_dataloaders(config, model_category, eval_mode=False):
     """
     Wrap ERA5 datasets in PyTorch Geometric DataLoaders.
 
@@ -89,7 +89,7 @@ def get_dataloaders(config, model_type, eval_mode=False):
 
     # Load datasets 
     if not eval_mode:
-        train_ds, val_ds = get_datasets(config=config, model_type=model_type, eval_mode=eval_mode)
+        train_ds, val_ds = get_datasets(config=config, model_category=model_category, eval_mode=eval_mode)
         
         print("Creating dataloaders...")
         
@@ -102,7 +102,7 @@ def get_dataloaders(config, model_type, eval_mode=False):
 
         return train_loader, val_loader
     else:
-        test_ds = get_datasets(config=config, model_type=model_type, eval_mode=eval_mode)
+        test_ds = get_datasets(config=config, model_category=model_category, eval_mode=eval_mode)
         
         print("Creating dataloaders...")
         

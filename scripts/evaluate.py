@@ -18,7 +18,6 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        choices=["gtcnn", "cnn3d", "convlstm"],
         help="Model type to evaluate",
     )
     parser.add_argument(
@@ -91,25 +90,20 @@ def save_report(metrics, model_type, ckpt_path, report_dir):
 
     print(f"Report saved to: {report_path}")
 
-def initialize_model(model_type, C_in, C_out):
-
-    root_dir = Path(__file__).resolve().parent.parent
-    model_config_path = root_dir / "utils" / "model_config.yaml"
-    with open(model_config_path, "r") as f:
-        model_config = yaml.safe_load(f)
+def initialize_model(model_config, model_type, C_in, C_out):
 
     if model_type == "gtcnn": 
 
-        hidden_ch = model_config["gtcnn"]["hidden_channels"] 
-        K = model_config["gtcnn"]["K"] 
-        num_layers = model_config["gtcnn"]["num_layers"] 
-        dropout = model_config["gtcnn"]["dropout"] 
+        hidden_ch = model_config[model_type]["hidden_channels"] 
+        K = model_config[model_type]["K"] 
+        num_layers = model_config[model_type]["num_layers"] 
+        dropout = model_config[model_type]["dropout"] 
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
 
     elif model_type == "cnn3d": 
 
-        hidden_ch = model_config["cnn3d"]["hidden_channels"]
+        hidden_ch = model_config[model_type]["hidden_channels"]
         model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
 
     else:
@@ -125,17 +119,24 @@ def main():
     config_path = root_dir / "utils" / "base_config.yaml"
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
+    model_config_path = root_dir / "utils" / "model_config.yaml"
+    with open(model_config_path, "r") as f:
+        model_config = yaml.safe_load(f)
     print("Config loaded!")
 
+    # Model category
+    category = "graph_based" if args.model_type in model_config.get("graph_based", {}).keys() else "grid_based"
+    model_config = model_config[category]
+
     # Dataloaders
-    test_loader = get_dataloaders(config=config, model_type=args.model_type, eval_mode=True)
-    C_in = test_loader.dataset.C
-    C_out = test_loader.dataset.C
+    test_loader = get_dataloaders(config=config, model_category=category, eval_mode=False)
+    C_in = test_loader.dataset.in_channels()
+    C_out = test_loader.dataset.out_channels() 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # Model
-    model = initialize_model(model_type=args.model_type, C_in=C_in, C_out=C_out)
+    # Model selection
+    model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
     model = model.to(device)
 
     # Load checkpoint

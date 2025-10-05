@@ -1,16 +1,22 @@
-gtcnn:
-  hidden_channels: 64
-  K: 3
-  num_layers: 3
-  dropout: 0.1
+graph_based:
+  gtcnn:
+    hidden_channels: 64
+    chebyshev_order: 3        
+    num_layers: 3
+    dropout: 0.1
 
-cnn3d:
-  hidden_channels: [32, 64]
-  dropout: 0.1
+  tikhonov:
+    regularization_strength: 1e-3   
+    solver: "cg"                    
 
-convlstm:
+grid_based:
+  cnn3d:
+    hidden_channels: [32, 64]
+    kernel_size: [3, 3, 3]
+    dropout: 0.1
 
-tikhonov:
-
-
-
+  convlstm:
+    hidden_channels: [32, 64]
+    kernel_size: [3, 3]
+    num_layers: 2
+    dropout: 0.2
