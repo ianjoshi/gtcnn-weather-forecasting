@@ -139,7 +139,6 @@ def main():
     model = model.to(device)
 
     # Load checkpoint
-    ckpt_dir = root_dir / "checkpoints"
     ckpt_path = Path(args.checkpoint)
 
     assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
