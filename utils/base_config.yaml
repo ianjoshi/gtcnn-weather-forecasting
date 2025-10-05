@@ -22,8 +22,9 @@ data:
 # ----- Training -----
 training:
   batch_size: 32
-  num_workers: 4
-  epochs: 50
+  num_workers: 0
+  epochs: 20
+  early_stopping: 5
   learning_rate: 0.001
   weight_decay: 1e-5
 
@@ -32,16 +33,4 @@ graph:
   input_length: 7
   forecast_horizon: 1
   neighborhood: 4            # 4 or 8
-  type: "strong"             # strong or cartesian
-
-# ----- Model -----
-model:
-  type: "graph"             
-  hidden_dim: 64
-  num_layers: 3
-  dropout: 0.2
-
-# ----- Logging -----
-logging:
-  log_dir: "runs/"
-  checkpoint_dir: "checkpoints/"
+  type: "strong"             # strong or cartesian             

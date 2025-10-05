@@ -1,21 +1,117 @@
-import xarray as xr
+import argparse
 import torch
-import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
+from tqdm import tqdm
 import yaml
-import sys
 from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from data.dataloader import get_dataloaders
+from models.gtcnn import GTCNN
+from models.cnn3d import CNN3D
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Train ML models on ERA5 data")
+    parser.add_argument(
+        "--model_type",
+        type=str,
+        default="gtcnn",
+        choices=["gtcnn", "cnn3d", "convlstm"],
+        help="Model type to train",
+    )
+    return parser.parse_args()
+
+
+def train_one_epoch(model, model_type, loader, optimizer, device, config):
+    model.train()
+    total_loss = 0.0
+    progress_bar = tqdm(loader, desc="Training", leave=False)
+
+    for batch in progress_bar:
+        optimizer.zero_grad()
+
+        if model_type == "gtcnn": 
+            batch = batch.to(device)
+            N = batch.y.size(0)  # number of spatial nodes (H*W)
+            T = config["graph"]["input_length"]
+
+            y_hat = model(batch.x, batch.edge_index, N, T)
+            loss = F.mse_loss(y_hat, batch.y)
+
+        elif model_type == "cnn3d":  
+            X, y = batch
+            X, y = X.to(device), y.to(device)
+            y_hat = model(X)
+            loss = F.mse_loss(y_hat, y)
+
+        loss.backward()
+        optimizer.step()
+        total_loss += loss.item()
+
+        progress_bar.set_postfix({"batch_loss": loss.item()})
+
+    return total_loss / len(loader)
+
+
+def validate(model, model_type, loader, device, config):
+    model.eval()
+    total_loss = 0.0
+    progress_bar = tqdm(loader, desc="Validating", leave=False)
+    with torch.no_grad():
+        for batch in progress_bar:
+            if model_type == "gtcnn": 
+                batch = batch.to(device)
+                N = batch.y.size(0)
+                T = config["graph"]["input_length"]
+
+                y_hat = model(batch.x, batch.edge_index, N, T)
+                loss = F.mse_loss(y_hat, batch.y)
+
+            elif model_type == "cnn3d":
+                X, y = batch
+                X, y = X.to(device), y.to(device)
+                y_hat = model(X)
+                loss = F.mse_loss(y_hat, y)
+
+            total_loss += loss.item()
+            progress_bar.set_postfix({"batch_loss": loss.item()})
+
+    return total_loss / len(loader)
+
+def initialize_model(model_type, C_in, C_out):
+
+    root_dir = Path(__file__).resolve().parent.parent
+    model_config_path = root_dir / "utils" / "model_config.yaml"
+    with open(model_config_path, "r") as f:
+        model_config = yaml.safe_load(f)
+
+    if model_type == "gtcnn": 
+
+        hidden_ch = model_config["gtcnn"]["hidden_channels"] 
+        K = model_config["gtcnn"]["K"] 
+        num_layers = model_config["gtcnn"]["num_layers"] 
+        dropout = model_config["gtcnn"]["dropout"] 
+        model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
+                      num_layers=num_layers, dropout=dropout)
+
+    elif model_type == "cnn3d": 
+
+        hidden_ch = model_config["cnn3d"]["hidden_channels"]
+        model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+
+    else:
+        raise ValueError(f"Unknown model type !!!")
+    
+    return model
 
 def main():
+    args = parse_args()
 
-    # Load config
+    # Load both configs
     root_dir = Path(__file__).resolve().parent.parent
-    config_path = root_dir / "utils" / "default_config.yaml"
-    with open(config_path, "r") as f:
+    base_config_path = root_dir / "utils" / "base_config.yaml"
+    with open(base_config_path, "r") as f:
         config = yaml.safe_load(f)
     print("Config loaded!")
 
@@ -33,17 +129,52 @@ def main():
         print(f"Dataset already exists at {local_dir}, skipping download.")
 
     # Dataloaders
-    train_loader, val_loader, test_loader = get_dataloaders(config=config)
+    train_loader, val_loader = get_dataloaders(config=config, model_type=args.model_type, eval_mode=False)
+    C_in = train_loader.dataset.in_channels()
+    C_out = train_loader.dataset.out_channels() 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    # Try first batch
-    first_batch = next(iter(train_loader))
-    first_batch = first_batch.to(device)
-    print(first_batch)
-    print("x:", first_batch.x.shape, first_batch.x.device)
-    print("edge_index:", first_batch.edge_index.shape, first_batch.edge_index.device)
-    print("y:", first_batch.y.shape, first_batch.y.device)
+    # Model selection
+    model = initialize_model(model_type=args.model_type, C_in=C_in, C_out=C_out)  
+    model = model.to(device)
+    optimizer = optim.AdamW(model.parameters(),
+                            lr=float(config["training"]["learning_rate"]),
+                            weight_decay=float(config["training"]["weight_decay"]))
+
+    # Prepare checkpoint directory
+    ckpt_dir = root_dir / "checkpoints"
+    ckpt_dir.mkdir(exist_ok=True)
+
+    best_val_loss = float("inf")
+
+    # Training loop
+    for epoch in range(1, config["training"]["epochs"] + 1):
+        print(f"\nEpoch {epoch}/{config['training']['epochs']}")
+
+        train_loss = train_one_epoch(model, args.model_type, train_loader, optimizer, device, config)
+        val_loss = validate(model, args.model_type, val_loader, device, config)
+
+        print(f"Epoch {epoch:03d} | Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f}")
+
+        # Best model
+        if val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_state = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "val_loss": val_loss,
+                "config": config
+            }
+
+    # Save best model 
+    if best_state is not None:
+        ckpt_path = ckpt_dir / f"best_{args.model_type}.pt"
+        torch.save(best_state, ckpt_path)
+        print(f"\nTraining complete! Best model saved to {ckpt_path} (val_loss={best_val_loss:.4f})")
+    else:
+        print("\nNo model was saved (training may have failed).")
 
 
 if __name__ == "__main__":

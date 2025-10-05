@@ -18,6 +18,7 @@ class ERA5Dataset(Dataset):
                  forecast_horizon, 
                  neighborhood,
                  graph_type,
+                 graph_mode=True,
                  drop_leap=True):
         """
         ERA5 dataset loader for spatio-temporal forecasting.
@@ -47,6 +48,7 @@ class ERA5Dataset(Dataset):
         self.forecast_horizon = forecast_horizon
         self.neighborhood = neighborhood
         self.graph_type = graph_type
+        self.graph_mode = graph_mode
 
         # Select time range based on split
         if split == "train":
@@ -64,7 +66,9 @@ class ERA5Dataset(Dataset):
             # Open dataset for this variable
             ds = xr.open_mfdataset(path, combine="by_coords")
             ds = ds.sel(time=time_range)
+
             if sample_rate == "daily":
+                print(f"Daily sampling for {path} in the {split} split...")
                 ds = ds.resample(time="1D").mean()
 
             # Compute global min/max from fixed training period
@@ -138,11 +142,24 @@ class ERA5Dataset(Dataset):
         X = self.data[start:end]       # (input_length, channels, H, W)
         y = self.data[target_idx]      # (channels, H, W)
 
-        # Convert to spatio-temporal PyG graph
-        graph = to_spatio_temporal_graph(
-            X, y, self.H, self.W,
-            neighborhood=self.neighborhood,
-            graph_type=self.graph_type
-        )
+        if self.graph_mode:
+            graph = to_spatio_temporal_graph(
+                X, y, self.H, self.W,
+                neighborhood=self.neighborhood,
+                graph_type=self.graph_type
+            )
+            return graph
+        else:
+            # Return plain tensors for CNN baseline model
+            return X, y
+        
+    @property
+    def in_channels(self):
+        """Number of input feature channels per node."""
+        return self.C
 
-        return graph
+    @property
+    def out_channels(self):
+        """Number of output feature channels per node."""
+        # Here we assume predicting the same variables as input.
+        return self.C
