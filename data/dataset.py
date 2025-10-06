@@ -40,6 +40,7 @@ class ERA5Dataset(Dataset):
             graph_type (str): Graph construction mode:
                 - "cartesian": temporal self-links only
                 - "strong": temporal links to spatial neighbors at next timestep
+            graph_mode (bool, optional): if True, turn the dataset into a graph. 
             drop_leap (bool, optional): If True, drop Feb 29 from leap years.
         """
         self.levels = levels
@@ -68,12 +69,17 @@ class ERA5Dataset(Dataset):
             ds = ds.sel(time=time_range)
 
             if sample_rate == "daily":
-                print(f"Daily sampling for {path} in the {split} split...")
+                print(f"Set to daily sampling for {path} in the {split} split...")
                 ds = ds.resample(time="1D").mean()
+            elif sample_rate == "6-hourly":
+                print(f"Set to 6-hourly sampling for {path} in the {split} split...")
+                ds = ds.resample(time="6h").nearest(tolerance="1h")
+            elif sample_rate == "hourly":
+                print(f"Set to hourly sampling for {path} in the {split} split...")
 
             # Compute global min/max from fixed training period
             global_ds = xr.open_mfdataset(path, combine="by_coords")
-            global_ds = global_ds.sel(time=slice("2005", "2018"))
+            global_ds = global_ds.sel(time=slice("2010", "2018"))
             max_val = global_ds.max()[lev].values
             min_val = global_ds.min()[lev].values
 

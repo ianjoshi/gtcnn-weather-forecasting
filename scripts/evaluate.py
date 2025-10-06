@@ -76,7 +76,7 @@ def evaluate(model, model_type, loader, device, config):
 
 
 def save_report(metrics, model_type, ckpt_path, report_dir):
-    """Save metrics to a text report with timestamp."""
+    # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
     report_path = report_dir / f"report_{model_type}.txt"
 

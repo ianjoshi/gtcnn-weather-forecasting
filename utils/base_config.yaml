@@ -11,17 +11,17 @@ data:
   ]
   levels: ["z", "t", "t2m", "u10", "v10"]        
   time:
-    train_start: "2005-01-01"
+    train_start: "2010-01-01"
     train_end:   "2014-12-31"
     val_start:   "2015-01-01"
     val_end:     "2016-12-31"
     test_start:  "2017-01-01"
     test_end:    "2018-12-31"
-  sample_rate: "daily"        # daily or hourly
+  sample_rate: "6-hourly"        # daily, hourly or 6-hourly
 
 # ----- Training -----
 training:
-  batch_size: 32
+  batch_size: 8
   num_workers: 0
   epochs: 20
   early_stopping: 5
