@@ -148,6 +148,9 @@ def main():
     ckpt_dir.mkdir(exist_ok=True)
 
     best_val_loss = float("inf")
+    best_state = None
+    patience = config["training"].get("early_stopping", 5)
+    epochs_no_improve = 0
 
     # Training loop
     for epoch in range(1, config["training"]["epochs"] + 1):
@@ -158,9 +161,10 @@ def main():
 
         print(f"Epoch {epoch:03d} | Train loss: {train_loss:.4f} | Val loss: {val_loss:.4f}")
 
-        # Best model
+        # Track best model
         if val_loss < best_val_loss:
             best_val_loss = val_loss
+            epochs_no_improve = 0
             best_state = {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
@@ -168,14 +172,24 @@ def main():
                 "val_loss": val_loss,
                 "config": config
             }
+            print(f"New best model found at epoch {epoch}! Val loss: {val_loss:.4f}")
+        else:
+            epochs_no_improve += 1
+            print(f"No improvement for {epochs_no_improve}/{patience} epochs...")
 
-    # Save best model 
+        # Early stopping
+        if epochs_no_improve >= patience:
+            print(f"\nEarly stopping triggered after {epoch} epochs (no improvement in {patience}).")
+            break
+
+    # Save best model at the end
     if best_state is not None:
         ckpt_path = ckpt_dir / f"best_{args.model_type}.pt"
         torch.save(best_state, ckpt_path)
         print(f"\nTraining complete! Best model saved to {ckpt_path} (val_loss={best_val_loss:.4f})")
     else:
         print("\nNo model was saved (training may have failed).")
+
 
 
 if __name__ == "__main__":
