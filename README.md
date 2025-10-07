@@ -8,16 +8,11 @@ This project uses spatio-temporal graph neural networks to perform weather forec
 
 ### Features
 
-- Processes ERA5 climate data variables including:
-  - Geopotential at 500hPa
-  - Temperature at 850hPa
-  - 2m Temperature
-  - 10m U-component of wind
-  - 10m V-component of wind
-- Implements both traditional and advanced graph-based models
-- Supports different graph connectivity patterns (strong/cartesian)
-- Configurable input sequence length and forecast horizon
-- Train/validation/test split by time periods
+- Processes ERA5 climate data variables
+- Multiple model implementations (including non-graph models, non-neural graph models and graph models)
+- Supports different graph connectivity patterns (e.g., strong/cartesian)
+- Configurable input sequence length and forecast horizon via config files
+- Train/validation/test splits are defined in the configuration files
 
 ## Installation
 
@@ -36,7 +31,7 @@ This project uses spatio-temporal graph neural networks to perform weather forec
     ```
 
 2. Create and activate the conda environment:
-    ```bash
+    ```powershell
     conda env create -f utils/environment.yml
     conda activate weather-cast
     ```
@@ -62,41 +57,58 @@ The data is split into the following time periods:
 To train the model:
 
 ```bash
-python scripts/train.py
+python scripts/train.py 
 ```
+You can also input the model type. Default is set to GTCNN.
 
 ### Evaluation
 
 To evaluate the model:
 
 ```bash
-python scripts/evaluate.py
+python scripts/evaluate.py 
 ```
+You can also input the model type and the checkpoint. Default is set to GTCNN.
 
 ### Configuration
 
-Model and training parameters can be configured in `utils/default_config.yaml`. Key configuration options include:
+Model and training parameters are split across the YAML files in `utils/`:
 
-- Input sequence length
-- Forecast horizon
-- Graph neighborhood size
-- Model architecture parameters
-- Training hyperparameters
+- `utils/base_config.yaml` — base dataset and training defaults (paths, time splits, logging)
+- `utils/model_config.yaml` — model-specific settings (hidden dimensions, layers, dropout, model type)
+- `utils/environment.yml` — conda environment used for development and reproducibility
 
-## Project Structure
+Key options you will commonly change:
+
+- Input sequence length and forecast_horizon
+- Neighborhood / graph construction parameters
+- Model architecture parameters (hidden dimension, layers, dropout)
+- Training hyperparameters (batch size, learning rate, epochs)
+
+## Project Structure (updated)
 
 ```
-├── data/               # Data processing modules
-│   ├── dataloader.py   # PyTorch data loaders
-│   ├── dataset.py      # Dataset classes
-│   └── transforms.py   # Data transformations
-├── models/             # Model implementations
-│   ├── advanced.py     # Advanced graph neural networks
-│   └── traditional.py  # Traditional approaches
-├── scripts/            # Training and evaluation scripts
-├── utils/              # Utility functions and configs
-└── notebooks/          # Jupyter notebooks for exploration
+├── data/                # Data processing modules
+│   ├── dataloader.py    # PyTorch data loaders 
+│   ├── dataset.py       # Dataset classes 
+│   └── transforms.py    # Data transforms and prepocessing
+├── models/              # Model implementations
+│   ├── cnn3d.py         # 3D-CNN baseline
+│   └── gtcnn.py         # Graph-temporal CNN (GTCNN)
+├── scripts/             # Training and evaluation CLI 
+│   ├── train.py
+│   └── evaluate.py
+├── utils/               # Configuration and environment 
+│   ├── base_config.yaml
+│   ├── model_config.yaml
+│   └── environment.yml
+├── checkpoints/         # Trained model checkpoints
+└── reports/             # Experiment reports / logs
 ```
+
+## Checkpoints and Reports
+
+THe training script saves the best model under `./checkpoints` and the evaluation script outputs the performance reports under `./reports` summarising results for the model.
 
 ## License
 
