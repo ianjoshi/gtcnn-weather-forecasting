@@ -31,7 +31,7 @@ This project uses spatio-temporal graph neural networks to perform weather forec
     ```
 
 2. Create and activate the conda environment:
-    ```powershell
+    ```bash
     conda env create -f utils/environment.yml
     conda activate weather-cast
     ```
