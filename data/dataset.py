@@ -20,7 +20,7 @@ class ERA5Dataset(Dataset):
                  neighborhood,
                  graph_type,
                  graph_mode=True,
-                 drop_leap=False):
+                 drop_leap=True):
         """
         ERA5 dataset loader for spatio-temporal forecasting.
 
@@ -66,6 +66,7 @@ class ERA5Dataset(Dataset):
 
         # Load and normalize each variable 
         self.data = []
+        filtered_times = None 
         for path, lev in zip(data_paths, levels):
             # Open dataset for this variable
             ds = xr.open_mfdataset(path, combine="by_coords")
@@ -93,8 +94,15 @@ class ERA5Dataset(Dataset):
             arr = arr.load().values  # shape: (time, lat, lon)
 
             # Drop leap days if enabled
+            times = ds["time"].values
             if drop_leap:
-                arr = self._drop_leap_days(arr, ds["time"].values)
+                arr, times = self._drop_leap_days(arr, times)
+                # Store the filtered times only once (they are the same for all variables)
+                if filtered_times is None:
+                    filtered_times = times
+            else:
+                if filtered_times is None:
+                    filtered_times = times
 
             # Add channel dimension (time, 1, H, W)
             arr = torch.from_numpy(arr).float().unsqueeze(1)
@@ -107,53 +115,48 @@ class ERA5Dataset(Dataset):
         _, _, self.H, self.W = self.data.shape
 
         # Add temporal (seasonal) encodings
-        temporal_features, _ = self.temporal_encoding(ds["time"].values, self.H, self.W)
+        temporal_features, _ = self.temporal_encoding(filtered_times, self.H, self.W)
         self.data = torch.cat([self.data, temporal_features], dim=1)
 
         # Cache channel size
         _, self.C, _, _ = self.data.shape
 
-    def _drop_leap_days(self, arr, time):
+    def _drop_leap_days(self, arr, times):
         """
-        Drop Feb 29 entries from leap years.
+        Remove all leap-day entries (February 29) from the dataset.
 
         Args:
-            arr (np.ndarray): Input array with shape (time, H, W).
-            time (np.ndarray): Corresponding datetime64 array.
+            arr (np.ndarray): Data array of shape (time, H, W).
+            times (np.ndarray): Corresponding datetime64 array.
 
         Returns:
-            np.ndarray: Array with leap days removed.
+            tuple[np.ndarray, np.ndarray]:
+                - Filtered data array with leap days removed.
+                - Matching filtered time array.
         """
-        mask = np.array(
-            [not (t.astype("datetime64[M]").astype(int) % 12 == 1
-                  and t.astype("datetime64[D]").astype(int) % 29 == 0)
-             for t in time]
-        )
-        return arr[mask]
+        mask = np.array([
+            not (pd.Timestamp(t).month == 2 and pd.Timestamp(t).day == 29)
+            for t in times
+        ])
+
+        return arr[mask], times[mask]
 
     def temporal_encoding(self, times, H, W):
         """
-        Compute cyclical temporal encodings for time-of-year information.
-        Adds sin(day_of_year) and cos(day_of_year) as two new feature channels.
+        Create cyclical temporal encodings to represent the time of year.
+        The encoding adds two channels — sin(day_of_year) and cos(day_of_year).
 
         Args:
-            times (np.ndarray or list of datetime64): Array of time steps.
-            H (int): Height of spatial grid.
-            W (int): Width of spatial grid.
+            times (np.ndarray or list of datetime64]): Time steps matching the data array.
+            H (int): Spatial grid height.
+            W (int): Spatial grid width.
 
         Returns:
-            torch.Tensor: Temporal encoding tensor of shape (time, 2, H, W), with channels [sin_doy, cos_doy].
-            np.ndarray: Filtered time array.
+            tuple[torch.Tensor, np.ndarray]:
+                - Temporal encoding tensor of shape (time, 2, H, W),
+                where channels are [sin_doy, cos_doy].
+                - The corresponding (possibly filtered) time array.
         """
-        times = np.array(times)
-
-        # Drop leap days if enabled
-        if self.drop_leap:
-            mask = np.array([
-                not (pd.Timestamp(t).month == 2 and pd.Timestamp(t).day == 29)
-                for t in times
-            ])
-            times = times[mask]
 
         # Compute day-of-year (1–365)
         doy = np.array([pd.Timestamp(t).dayofyear for t in times])
