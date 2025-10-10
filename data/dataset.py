@@ -20,7 +20,7 @@ class ERA5Dataset(Dataset):
                  neighborhood,
                  graph_type,
                  graph_mode=True,
-                 drop_leap=True):
+                 drop_leap=False):
         """
         ERA5 dataset loader for spatio-temporal forecasting.
 
@@ -222,7 +222,7 @@ class ERA5Dataset(Dataset):
     @property
     def out_channels(self):
         """Number of output feature channels per node."""
-        return len(self.levels)  # only predict the original variables
+        return self.C      # we assume predicting the same variables as input (5 features).
     
     @property
     def normalization_stats(self):
