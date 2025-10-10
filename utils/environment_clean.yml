@@ -29,6 +29,7 @@ dependencies:
   - huggingface_hub
   - joblib
   - ipykernel
+  - dask
   - pip
   - pip:
     - torch-spatiotemporal
