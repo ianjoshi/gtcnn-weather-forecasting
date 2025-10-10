@@ -1,7 +1,3 @@
-"""
-GTCNN for your PyG spatio-temporal graph
-Note: Uses Chebyshev graph convolution (ChebConv) over the spatio-temporal graph (we can make this more flexible later).
-"""
 from __future__ import annotations
 from typing import Optional
 
@@ -69,24 +65,28 @@ class GTCNN(nn.Module):
         T: number of time steps in the input sequence
         returns: [N, C_out] predictions for the last time slice only
         """
-        h = x
+        X = x
         bn_idx = 0
-        for li, conv in enumerate(self.layers):
-            h_in = h
-            h = conv(h, edge_index)  
-            if li < len(self.layers) - 1:  # hidden blocks
+
+        for layer_idx, conv_layer in enumerate(self.layers):
+            X_in = X  # for residual connection
+            X = conv_layer(X, edge_index) 
+
+            if layer_idx < len(self.layers) - 1:  # hidden blocks
                 if self.use_bn:
-                    h = self.bns[bn_idx](h)
+                    X = self.bns[bn_idx](X)
                     bn_idx += 1
-                h = F.relu(h)
-                h = F.dropout(h, p=self.dropout, training=self.training)
-                if self.residual and h.shape == h_in.shape:
-                    h = h + h_in
+
+                X = F.relu(X) # non-linearity
+                X = F.dropout(X, p=self.dropout, training=self.training) # dropout
+
+                if self.residual and X.shape == X_in.shape:
+                    X = X + X_in # residual connection
 
         # Take last time slice only
         start = (T - 1) * N
         end = T * N
-        y_hat = h[start:end]  # [N, out_channels]
+        y_hat = X[start:end]  # [N, out_channels]
         
         return y_hat
 

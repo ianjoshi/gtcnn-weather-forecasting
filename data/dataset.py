@@ -1,3 +1,4 @@
+import pandas as pd
 import torch
 from torch.utils.data import Dataset
 import xarray as xr
@@ -103,7 +104,14 @@ class ERA5Dataset(Dataset):
         self.data = torch.cat(self.data, dim=1)
 
         # Cache grid size
-        _, self.C, self.H, self.W = self.data.shape
+        _, _, self.H, self.W = self.data.shape
+
+        # Add temporal (seasonal) encodings
+        temporal_features, _ = self.temporal_encoding(ds["time"].values, self.H, self.W)
+        self.data = torch.cat([self.data, temporal_features], dim=1)
+
+        # Cache channel size
+        _, self.C, _, _ = self.data.shape
 
     def _drop_leap_days(self, arr, time):
         """
@@ -122,6 +130,49 @@ class ERA5Dataset(Dataset):
              for t in time]
         )
         return arr[mask]
+
+    def temporal_encoding(self, times, H, W):
+        """
+        Compute cyclical temporal encodings for time-of-year information.
+        Adds sin(day_of_year) and cos(day_of_year) as two new feature channels.
+
+        Args:
+            times (np.ndarray or list of datetime64): Array of time steps.
+            H (int): Height of spatial grid.
+            W (int): Width of spatial grid.
+
+        Returns:
+            torch.Tensor: Temporal encoding tensor of shape (time, 2, H, W), with channels [sin_doy, cos_doy].
+            np.ndarray: Filtered time array.
+        """
+        times = np.array(times)
+
+        # Drop leap days if enabled
+        if self.drop_leap:
+            mask = np.array([
+                not (pd.Timestamp(t).month == 2 and pd.Timestamp(t).day == 29)
+                for t in times
+            ])
+            times = times[mask]
+
+        # Compute day-of-year (1–365)
+        doy = np.array([pd.Timestamp(t).dayofyear for t in times])
+
+        # Cyclical encodings
+        sin_doy = np.sin(2 * np.pi * doy / 365.0)
+        cos_doy = np.cos(2 * np.pi * doy / 365.0)
+
+        # from (time, 2) to (time, 2, H, W)
+        temporal_features = np.stack([sin_doy, cos_doy], axis=1)
+        temporal_features = (
+            torch.from_numpy(temporal_features)
+            .float()
+            .unsqueeze(-1)          # add 1 new dimension, shape: (time, 2, 1)
+            .unsqueeze(-1)          # add 1 new dimension, shape: (time, 2, 1, 1)
+            .expand(-1, -1, H, W)   # broadcast those 1x1 spatial dims, shape: (time, 2, H, W)
+        )
+
+        return temporal_features, times
 
     def __len__(self):
         """
@@ -165,14 +216,13 @@ class ERA5Dataset(Dataset):
         
     @property
     def in_channels(self):
-        """Number of input feature channels per node."""
-        return self.C
+        """Number of input feature channels per node (including seasonality)."""
+        return self.C 
 
     @property
     def out_channels(self):
         """Number of output feature channels per node."""
-        # Here we assume predicting the same variables as input.
-        return self.C
+        return len(self.levels)  # only predict the original variables
     
     @property
     def normalization_stats(self):
