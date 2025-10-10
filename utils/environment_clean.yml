@@ -28,6 +28,7 @@ dependencies:
   - pytorch-spline-conv
   - huggingface_hub
   - joblib
+  - ipykernel
   - pip
   - pip:
     - torch-spatiotemporal

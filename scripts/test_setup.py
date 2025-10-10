@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.data import Data
 from torch_geometric.nn import ChebConv
+from tsl.data import SpatioTemporalDataset
 
 def test_cuda():
     """Test basic CUDA availability"""
