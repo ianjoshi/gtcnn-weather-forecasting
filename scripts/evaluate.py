@@ -9,7 +9,6 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
-from models.cnn3d import CNN3D
 
 
 def parse_args():
@@ -104,7 +103,7 @@ def initialize_model(model_config, model_type, C_in, C_out):
     elif model_type == "cnn3d": 
 
         hidden_ch = model_config[model_type]["hidden_channels"]
-        model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+        # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
 
     else:
         raise ValueError(f"Unknown model type !!!")
