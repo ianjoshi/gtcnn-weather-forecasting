@@ -9,7 +9,6 @@ from huggingface_hub import snapshot_download
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
-from models.cnn3d import CNN3D
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train ML models on ERA5 data")
@@ -92,7 +91,7 @@ def initialize_model(model_config, model_type, C_in, C_out):
     elif model_type == "cnn3d": 
 
         hidden_ch = model_config[model_type]["hidden_channels"]
-        model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+        # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
 
     else:
         raise ValueError(f"Unknown model type !!!")
@@ -172,7 +171,7 @@ def main():
                 "val_loss": val_loss,
                 "config": config
             }
-            print(f"New best model found at epoch {epoch}! Val loss: {val_loss:.4f}")
+            print(f"New best model found at epoch {epoch}!")
         else:
             epochs_no_improve += 1
             print(f"No improvement for {epochs_no_improve}/{patience} epochs...")

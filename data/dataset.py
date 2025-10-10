@@ -51,6 +51,8 @@ class ERA5Dataset(Dataset):
         self.graph_type = graph_type
         self.graph_mode = graph_mode
 
+        self.norm_stats = {}
+
         # Select time range based on split
         if split == "train":
             time_range = slice(time_slices["train_start"], time_slices["train_end"])
@@ -82,6 +84,8 @@ class ERA5Dataset(Dataset):
             global_ds = global_ds.sel(time=slice("2010", "2018"))
             max_val = global_ds.max()[lev].values
             min_val = global_ds.min()[lev].values
+
+            self.norm_stats[lev] = (float(min_val), float(max_val))
 
             # Normalize to [0, 1]
             arr = (ds[lev] - min_val) / (max_val - min_val)
@@ -169,3 +173,8 @@ class ERA5Dataset(Dataset):
         """Number of output feature channels per node."""
         # Here we assume predicting the same variables as input.
         return self.C
+    
+    @property
+    def normalization_stats(self):
+        """Return dictionary of {variable_name: (min, max)} for denormalization."""
+        return self.norm_stats
