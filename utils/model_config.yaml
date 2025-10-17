@@ -4,34 +4,14 @@ graph_based:
     chebyshev_order: 3        
     num_layers: 3
     dropout: 0.1
-
-  sgp_gtcnn:
-    # Deep Echo State Network (DeepESN) encoder
-    rnn_hidden_size: 128
-    rnn_num_layers: 2
-    temporal_embedding_dim: 256
-    rnn_type: "DeepESN"  # DeepESN with leaky integrator neurons
-    
-    # DeepESN specific parameters
-    spectral_radius: 0.9  # For ESN weight initialization
-    input_scaling: 1.0    # Input weight scaling
-    bias_scaling: 0.1     # Bias weight scaling
-    leaky_rates: [0.1, 0.9]  # γ_l for each layer (multi-scale dynamics)
-    
-    # Spatial propagation
-    spatial_powers: [1, 2, 3]  # Different adjacency matrix powers
-    spatial_embedding_dim: 128
-    
-    # Decoder network
-    decoder_hidden_dims: [256, 128, 64]
+  scalable_gtcnn:
+    hidden_channels: 64
+    chebyshev_order: 3        
+    num_layers: 3
     dropout: 0.1
-    
-    # Training and caching
-    precompute_embeddings: true
-    embedding_cache_path: "./sgp_embeddings/"
-    force_recompute_embeddings: false
-
-  tikhonov:                   
+    num_neighbors: [25, 10, 5]  # 3-hop sampling to match 3-layer GTCNN
+    neighborhood: 4
+    sampling_strategy: "single"
 
 grid_based:
   cnn3d:

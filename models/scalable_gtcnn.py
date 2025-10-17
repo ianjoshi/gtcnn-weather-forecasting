@@ -84,16 +84,16 @@ class ScalableGTCNN(nn.Module):
         Returns:
             [N, C_out] - predictions for the last time slice
         """
-        batch_size = x.shape[0] // (N * T)
+        batch_size = N // self.num_nodes  # N is total nodes in batch, self.num_nodes is nodes per sample
         C_in = x.shape[1]
         
         # Validate input shapes
-        assert x.shape[0] == batch_size * N * T, f"Input shape mismatch: expected {batch_size * N * T}, got {x.shape[0]}"
-        assert N == self.num_nodes, f"Node count mismatch: expected {self.num_nodes}, got {N}"
+        assert x.shape[0] == batch_size * self.num_nodes * T, f"Input shape mismatch: expected {batch_size * self.num_nodes * T}, got {x.shape[0]}"
+        assert N == batch_size * self.num_nodes, f"Node count mismatch: expected {batch_size * self.num_nodes}, got {N}"
         assert edge_index.shape[0] == 2, f"Expected edge_index shape [2, E], got {edge_index.shape}"
         
-        # Reshape input to [batch_size, T, N, C_in]
-        x_reshaped = x.view(batch_size, T, N, C_in)
+        # Reshape input to [batch_size, T, H*W, C_in]
+        x_reshaped = x.view(batch_size, T, self.num_nodes, C_in)
         
         if self.sampling_strategy == "single":
             # Sample one subgraph per batch
@@ -114,11 +114,13 @@ class ScalableGTCNN(nn.Module):
         T: int
     ) -> torch.Tensor:
         """Forward pass with single subgraph sampling."""
-        batch_size, T, N_full, C_in = x_reshaped.shape
+        batch_size, T, N_per_sample, C_in = x_reshaped.shape
         
-        # Sample spatiotemporal subgraph
+        # Sample spatiotemporal subgraph from first batch item
+        # Reshape from [T, H*W, C_in] to [T, H, W, C_in] for SpatiotemporalSampler
+        sample_data = x_reshaped[0].view(T, self.H, self.W, C_in)
         temporal_sequences, sampled_edges, sampled_nodes = self.spatiotemporal_sampler.sample_spatiotemporal(
-            x_reshaped[0],  # Use first batch item for sampling
+            sample_data,
             batch_size=1,
             reference_timestep=0
         )
@@ -126,14 +128,18 @@ class ScalableGTCNN(nn.Module):
         # Reshape for GTCNN: [sampled_nodes*T, C_in]
         sampled_x = temporal_sequences.view(-1, C_in)
         
+        # Move sampled edges to the same device as the input
+        sampled_edges = sampled_edges.to(x_reshaped.device)
+        
         # Forward through GTCNN
         sampled_predictions = self.gtcnn(sampled_x, sampled_edges, len(sampled_nodes), T)
         
-        # Map predictions back to full grid
-        full_predictions = torch.zeros(N_full, sampled_predictions.shape[1], device=x_reshaped.device)
-        full_predictions[sampled_nodes] = sampled_predictions
+        # Map predictions back to full grid for all batch items
+        full_predictions = torch.zeros(batch_size, N_per_sample, sampled_predictions.shape[1], device=x_reshaped.device)
+        full_predictions[:, sampled_nodes] = sampled_predictions.unsqueeze(0).expand(batch_size, -1, -1)
         
-        return full_predictions
+        # Flatten to match expected output format: [batch_size * N_per_sample, C_out]
+        return full_predictions.view(-1, sampled_predictions.shape[1])
     
     def _forward_multiple_samples(
         self, 
@@ -144,14 +150,16 @@ class ScalableGTCNN(nn.Module):
         num_samples: int
     ) -> torch.Tensor:
         """Forward pass with multiple subgraph sampling and averaging."""
-        batch_size, T, N_full, C_in = x_reshaped.shape
+        batch_size, T, N_per_sample, C_in = x_reshaped.shape
         
         all_predictions = []
         
         for _ in range(num_samples):
-            # Sample spatiotemporal subgraph
+            # Sample spatiotemporal subgraph from first batch item
+            # Reshape from [T, H*W, C_in] to [T, H, W, C_in] for SpatiotemporalSampler
+            sample_data = x_reshaped[0].view(T, self.H, self.W, C_in)
             temporal_sequences, sampled_edges, sampled_nodes = self.spatiotemporal_sampler.sample_spatiotemporal(
-                x_reshaped[0],  # Use first batch item for sampling
+                sample_data,
                 batch_size=1,
                 reference_timestep=0
             )
@@ -159,17 +167,21 @@ class ScalableGTCNN(nn.Module):
             # Reshape for GTCNN: [sampled_nodes*T, C_in]
             sampled_x = temporal_sequences.view(-1, C_in)
             
+            # Move sampled edges to the same device as the input
+            sampled_edges = sampled_edges.to(x_reshaped.device)
+            
             # Forward through GTCNN
             sampled_predictions = self.gtcnn(sampled_x, sampled_edges, len(sampled_nodes), T)
             
-            # Map to full grid
-            full_predictions = torch.zeros(N_full, sampled_predictions.shape[1], device=x_reshaped.device)
-            full_predictions[sampled_nodes] = sampled_predictions
+            # Map to full grid for all batch items
+            full_predictions = torch.zeros(batch_size, N_per_sample, sampled_predictions.shape[1], device=x_reshaped.device)
+            full_predictions[:, sampled_nodes] = sampled_predictions.unsqueeze(0).expand(batch_size, -1, -1)
             all_predictions.append(full_predictions)
         
         # Average predictions from multiple samples
         averaged_predictions = torch.stack(all_predictions).mean(dim=0)
         
-        return averaged_predictions
+        # Flatten to match expected output format: [batch_size * N_per_sample, C_out]
+        return averaged_predictions.view(-1, averaged_predictions.shape[-1])
 
 

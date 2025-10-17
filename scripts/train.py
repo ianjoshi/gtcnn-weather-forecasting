@@ -1,14 +1,22 @@
 import argparse
+import sys
+import os
+from pathlib import Path
+
+# Add project root to Python path
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
 from tqdm import tqdm
 import yaml
-from pathlib import Path
 from huggingface_hub import snapshot_download
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.scalable_gtcnn import ScalableGTCNN
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train ML models on ERA5 data")
@@ -30,6 +38,14 @@ def train_one_epoch(model, model_type, loader, optimizer, device, config):
         optimizer.zero_grad()
 
         if model_type == "gtcnn": 
+            batch = batch.to(device)
+            N = batch.y.size(0)  # number of spatial nodes (H*W)
+            T = config["graph"]["input_length"]
+
+            y_hat = model(batch.x, batch.edge_index, N, T)
+            loss = F.mse_loss(y_hat, batch.y)
+
+        elif model_type == "scalable_gtcnn":
             batch = batch.to(device)
             N = batch.y.size(0)  # number of spatial nodes (H*W)
             T = config["graph"]["input_length"]
@@ -66,6 +82,14 @@ def validate(model, model_type, loader, device, config):
                 y_hat = model(batch.x, batch.edge_index, N, T)
                 loss = F.mse_loss(y_hat, batch.y)
 
+            elif model_type == "scalable_gtcnn":
+                batch = batch.to(device)
+                N = batch.y.size(0)
+                T = config["graph"]["input_length"]
+
+                y_hat = model(batch.x, batch.edge_index, N, T)
+                loss = F.mse_loss(y_hat, batch.y)
+
             elif model_type == "cnn3d":
                 X, y = batch
                 X, y = X.to(device), y.to(device)
@@ -77,10 +101,18 @@ def validate(model, model_type, loader, device, config):
 
     return total_loss / len(loader)
 
-def initialize_model(model_config, model_type, C_in, C_out):
-
+def initialize_model(model_config, model_type, C_in, C_out, H=None, W=None):
+    """
+    Initialize model based on type and configuration.
+    
+    Args:
+        model_config: Model configuration dictionary
+        model_type: Type of model to initialize
+        C_in: Number of input channels
+        C_out: Number of output channels
+        H, W: Grid dimensions (only required for ScalableGTCNN)
+    """
     if model_type == "gtcnn": 
-
         hidden_ch = model_config[model_type]["hidden_channels"] 
         K = model_config[model_type]["chebyshev_order"] 
         num_layers = model_config[model_type]["num_layers"] 
@@ -88,13 +120,40 @@ def initialize_model(model_config, model_type, C_in, C_out):
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
 
-    elif model_type == "cnn3d": 
+    elif model_type == "scalable_gtcnn":
+        # Create base GTCNN first
+        hidden_ch = model_config[model_type]["hidden_channels"] 
+        K = model_config[model_type]["chebyshev_order"] 
+        num_layers = model_config[model_type]["num_layers"] 
+        dropout = model_config[model_type]["dropout"]
+        
+        base_gtcnn = GTCNN(
+            in_channels=C_in, 
+            hidden_channels=hidden_ch, 
+            out_channels=C_out, 
+            K=K, 
+            num_layers=num_layers, 
+            dropout=dropout
+        )
+        
+        # Wrap with ScalableGTCNN
+        if H is None or W is None:
+            raise ValueError("H and W must be provided for ScalableGTCNN")
+            
+        model = ScalableGTCNN(
+            gtcnn=base_gtcnn,
+            H=H, W=W,
+            num_neighbors=model_config[model_type]["num_neighbors"],
+            neighborhood=model_config[model_type]["neighborhood"],
+            sampling_strategy=model_config[model_type]["sampling_strategy"]
+        )
 
+    elif model_type == "cnn3d": 
         hidden_ch = model_config[model_type]["hidden_channels"]
         # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
 
     else:
-        raise ValueError(f"Unknown model type !!!")
+        raise ValueError(f"Unknown model type: {model_type}")
     
     return model
 
@@ -135,8 +194,26 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
+    # Get grid dimensions from dataset (only needed for ScalableGTCNN)
+    H = train_loader.dataset.H
+    W = train_loader.dataset.W
+    
     # Model selection
-    model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
+    if args.model_type == "scalable_gtcnn":
+        model = initialize_model(
+            model_config=model_config, 
+            model_type=args.model_type, 
+            C_in=C_in, 
+            C_out=C_out,
+            H=H, W=W
+        )
+    else:
+        model = initialize_model(
+            model_config=model_config, 
+            model_type=args.model_type, 
+            C_in=C_in, 
+            C_out=C_out
+        )
     model = model.to(device)
     optimizer = optim.AdamW(model.parameters(),
                             lr=float(config["training"]["learning_rate"]),
