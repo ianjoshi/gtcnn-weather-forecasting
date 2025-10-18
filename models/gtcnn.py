@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import ChebConv
+from torch_geometric.nn import GraphNorm
 
 
 class GTCNN(nn.Module):
@@ -48,18 +49,18 @@ class GTCNN(nn.Module):
         k_hops = [i + 1 for i in range(num_layers)] if incremental_k else [K] * num_layers
 
         # First layer
-        layers.append(ChebConv(in_channels, hidden_channels, K=k_hops[0], normalization=None))
+        layers.append(ChebConv(in_channels, hidden_channels, K=k_hops[0], normalization="sym"))
         if use_bn:
-            bns.append(nn.BatchNorm1d(hidden_channels))
+            bns.append(GraphNorm(hidden_channels))
 
         # Hidden layers
         for layer_idx in range(1, num_layers - 1):
-            layers.append(ChebConv(hidden_channels, hidden_channels, K=k_hops[layer_idx], normalization=None))
+            layers.append(ChebConv(hidden_channels, hidden_channels, K=k_hops[layer_idx], normalization="sym"))
             if use_bn:
-                bns.append(nn.BatchNorm1d(hidden_channels))
+                bns.append(GraphNorm(hidden_channels))
 
         # Final layer
-        layers.append(ChebConv(hidden_channels, out_channels, K=k_hops[-1], normalization=None))
+        layers.append(ChebConv(hidden_channels, out_channels, K=k_hops[-1], normalization="sym"))
 
         self.layers = nn.ModuleList(layers)
         self.bns = nn.ModuleList(bns)
