@@ -5,11 +5,9 @@ import torch_geometric
 import yaml
 from pathlib import Path
 import numpy as np
-from datetime import datetime
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from data.dataloader import get_dataloaders
-from data.dataset import ERA5Dataset
 from models.gtcnn import GTCNN
 
 
