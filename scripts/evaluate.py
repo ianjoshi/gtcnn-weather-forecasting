@@ -9,6 +9,7 @@ from datetime import datetime
 from sklearn.metrics import mean_absolute_error, r2_score
 
 from data.dataloader import get_dataloaders
+from data.dataset import ERA5Dataset
 from models.gtcnn import GTCNN
 
 
@@ -18,7 +19,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        choices=["gtcnn", "cnn3d", "persistence"],
+        choices=["gtcnn", "cnn3d", "persistence", "climatology"],
         help="Model type to evaluate or 'persistence' for baseline",
     )
     parser.add_argument(
@@ -67,6 +68,21 @@ def evaluate(model, model_type, loader, device, config):
                 X, y_true = X.to(device), y_true.to(device)
                 y_hat = X[:, -1, :, :, :] if X.dim() == 5 and X.shape[1] == T else X[:, :, -1, :, :]
 
+        elif model_type == "climatology":
+            # Determine data format (same as persistence)
+            if isinstance(batch, torch_geometric.data.Batch):
+                batch = batch.to(device)
+                N = H * W
+                bs = batch.doy.size(0)
+                C = dataset.C
+                
+                climatology = dataset.climatology.to(device)
+                clim_batch = climatology[batch.doy - 1]
+                y_hat = clim_batch.permute(0, 2, 3, 1).reshape(bs * N, C)
+                y_true = batch.y
+            else:  # Grid-based
+                raise NotImplementedError("Climatology baseline not implemented for grid-based data.")
+
         elif model_type == "gtcnn":
             batch = batch.to(device)
             N = batch.y.size(0)
@@ -101,7 +117,6 @@ def evaluate(model, model_type, loader, device, config):
         "R2": r2,
         "Loss": total_loss / len(loader),
     }
-
 
 def save_report(metrics, model_type, ckpt_path, report_dir):
     # Save metrics to a text report 
@@ -164,13 +179,13 @@ def main():
     print("Using device:", device)
 
     # Model selection
-    ckpt_path = None
-    if args.model_type != "persistence":
+    ckpt_path = args.model_type # For baselines, this is just the model name
+    if args.model_type in ["gtcnn", "cnn3d"]:
         model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
         model = model.to(device)
 
         # Load checkpoint
-        ckpt_path = Path(args.checkpoint)
+        ckpt_path = Path(args.checkpoint) # This overwrites the string with a Path object
 
         assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
 
@@ -179,7 +194,7 @@ def main():
         print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
     else:
         model = None
-        print("Evaluating persistence baseline (no model required).")
+        print(f"Evaluating {args.model_type} baseline (no model required).")
 
     # Evaluate
     print("Evaluating on test set...")
@@ -187,7 +202,7 @@ def main():
 
     # Save to text file
     report_dir = root_dir / "reports"
-    save_report(metrics, args.model_type, ckpt_path or "persistence", report_dir)
+    save_report(metrics, args.model_type, ckpt_path, report_dir)
 
 
 if __name__ == "__main__":

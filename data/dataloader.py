@@ -40,21 +40,24 @@ def get_datasets(config, model_category, eval_mode=False):
         graph_mode = True
         print("Using a graph model...")
 
+    train_ds = ERA5Dataset(
+        split="train",
+        data_paths=data_paths, levels=levels, time_slices=time_slices,
+        sample_rate=sample_rate, input_length=input_length, 
+        forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
+        graph_type=graph_type, graph_mode=graph_mode,
+        climatology=None # Train computes its own
+    )
+
     # Build datasets
     if not eval_mode:
-        train_ds = ERA5Dataset(
-            split="train",
-            data_paths=data_paths, levels=levels, time_slices=time_slices,
-            sample_rate=sample_rate, input_length=input_length, 
-            forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
-            graph_type=graph_type, graph_mode=graph_mode
-        )
         val_ds = ERA5Dataset(
             split="val",
             data_paths=data_paths, levels=levels, time_slices=time_slices,
             sample_rate=sample_rate, input_length=input_length, 
             forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
-            graph_type=graph_type, graph_mode=graph_mode
+            graph_type=graph_type, graph_mode=graph_mode,
+            climatology=train_ds.climatology  
         )
         print(f"Dataset sizes -> Train: {len(train_ds)}, Val: {len(val_ds)}")
         return train_ds, val_ds
@@ -64,7 +67,8 @@ def get_datasets(config, model_category, eval_mode=False):
             data_paths=data_paths, levels=levels, time_slices=time_slices,
             sample_rate=sample_rate, input_length=input_length, 
             forecast_horizon=forecast_horizon, neighborhood=neighborhood, 
-            graph_type=graph_type, graph_mode=graph_mode
+            graph_type=graph_type, graph_mode=graph_mode,
+            climatology=train_ds.climatology
         )
         print(f"Dataset sizes -> Test: {len(test_ds)}")
         return test_ds
