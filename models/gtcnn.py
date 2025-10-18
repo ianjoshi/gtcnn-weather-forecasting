@@ -18,17 +18,19 @@ class GTCNN(nn.Module):
         dropout: float = 0.1,
         residual: bool = True,
         use_bn: bool = True,
+        incremental_k: bool = False,  
     ) -> None:
         """
         Args:
-            in_channels: node feature dim (C_in)
+            in_channels: node feature dimension (C_in)
             hidden_channels: width of hidden layers
-            out_channels: target dim (C_out)
-            K: Chebyshev order (K=2..3 is usually enough)
-            num_layers: number of ChebConv blocks (ideally >=2)
+            out_channels: target dimension (C_out)
+            K: base Chebyshev order (used if incremental_k=False)
+            num_layers: number of ChebConv blocks
             dropout: dropout probability after each block
             residual: add residual skip where shapes match
             use_bn: use BatchNorm1d on node features
+            incremental_k: if True, layer i uses K=i (starting from 1 hop)
         """
         super().__init__()
         assert num_layers >= 2, "Use at least 2 layers for non-trivial receptive field."
@@ -36,23 +38,28 @@ class GTCNN(nn.Module):
         self.dropout = dropout
         self.residual = residual
         self.use_bn = use_bn
+        self.incremental_k = incremental_k
 
         layers = []
         bns = []
 
-        # first layer
-        layers.append(ChebConv(in_channels, hidden_channels, K=K, normalization=None))
+        # Determine K for each layer
+        # If incremental_k=True : k_hops = [1, 2, 3, ...], else : k_hops = [K, K, K, ...]
+        k_hops = [i + 1 for i in range(num_layers)] if incremental_k else [K] * num_layers
+
+        # First layer
+        layers.append(ChebConv(in_channels, hidden_channels, K=k_hops[0], normalization=None))
         if use_bn:
             bns.append(nn.BatchNorm1d(hidden_channels))
 
-        # hidden layers
-        for _ in range(num_layers - 2):
-            layers.append(ChebConv(hidden_channels, hidden_channels, K=K, normalization=None))
+        # Hidden layers
+        for layer_idx in range(1, num_layers - 1):
+            layers.append(ChebConv(hidden_channels, hidden_channels, K=k_hops[layer_idx], normalization=None))
             if use_bn:
                 bns.append(nn.BatchNorm1d(hidden_channels))
 
-        # final layer to out_channels (no BN)
-        layers.append(ChebConv(hidden_channels, out_channels, K=K, normalization=None))
+        # Final layer
+        layers.append(ChebConv(hidden_channels, out_channels, K=k_hops[-1], normalization=None))
 
         self.layers = nn.ModuleList(layers)
         self.bns = nn.ModuleList(bns)
@@ -70,25 +77,22 @@ class GTCNN(nn.Module):
 
         for layer_idx, conv_layer in enumerate(self.layers):
             X_in = X  # for residual connection
-            X = conv_layer(X, edge_index) 
+            X = conv_layer(X, edge_index)
 
             if layer_idx < len(self.layers) - 1:  # hidden blocks
                 if self.use_bn:
                     X = self.bns[bn_idx](X)
                     bn_idx += 1
 
-                X = F.relu(X) # non-linearity
-                X = F.dropout(X, p=self.dropout, training=self.training) # dropout
+                X = F.relu(X)
+                X = F.dropout(X, p=self.dropout, training=self.training)
 
                 if self.residual and X.shape == X_in.shape:
-                    X = X + X_in # residual connection
+                    X = X + X_in
 
-        # Take last time slice only
+        # Output only last time slice
         start = (T - 1) * N
         end = T * N
         y_hat = X[start:end]  # [N, out_channels]
-        
+
         return y_hat
-
-
-

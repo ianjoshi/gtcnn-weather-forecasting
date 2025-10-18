@@ -1,7 +1,7 @@
 graph_based:
   gtcnn:
     hidden_channels: 64
-    chebyshev_order: 3        
+    chebyshev_order: 1        
     num_layers: 3
     dropout: 0.1
 
