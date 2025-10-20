@@ -1,7 +1,7 @@
 graph_based:
   gtcnn:
     hidden_channels: 64
-    chebyshev_order: 3        
+    chebyshev_order: 1        
     num_layers: 3
     dropout: 0.1
 
@@ -9,8 +9,10 @@ graph_based:
 
 grid_based:
   cnn3d:
-    hidden_channels: [32, 64]
-    kernel_size: [3, 3, 3]
+    hidden_channels: 64
+    num_layers: 4
     dropout: 0.1
+    use_bn: true
+    variant: "simple"  # or "full" for the U-Net style version
 
   convlstm:

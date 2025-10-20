@@ -9,6 +9,7 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.cnn3d import CNN3D, SimpleCNN3D  # ADD THIS IMPORT
 
 
 def parse_args():
@@ -92,6 +93,13 @@ def evaluate(model, model_type, loader, device, config):
             X, y_true = batch
             X, y_true = X.to(device), y_true.to(device)
             y_hat = model(X)
+            
+            # For 3D CNN, ensure output has the right shape
+            # Model should output [B, C_out, H, W], target is [B, C_out, H, W]
+            if y_hat.dim() == 4 and y_true.dim() == 4:
+                # Flatten spatial dimensions for metric calculation
+                y_hat = y_hat.reshape(y_hat.size(0), y_hat.size(1), -1)
+                y_true = y_true.reshape(y_true.size(0), y_true.size(1), -1)
 
         loss = F.mse_loss(y_hat, y_true)
         total_loss += loss.item()
@@ -119,22 +127,24 @@ def evaluate(model, model_type, loader, device, config):
 def save_report(metrics, model_type, ckpt_path, report_dir):
     # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = report_dir / f"report_{model_type}.txt"
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = report_dir / f"report_{model_type}_{timestamp}.txt"
 
     with open(report_path, "w") as f:
         f.write(f"Performance Report for {model_type.upper()}\n")
+        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Checkpoint: {ckpt_path}\n")
-        f.write("-" * 50 + "\n")
+        f.write("=" * 50 + "\n")
         for k, v in metrics.items():
             f.write(f"{k:>10}: {v:.6f}\n")
-        f.write("-" * 50 + "\n")
+        f.write("=" * 50 + "\n")
 
     print(f"Report saved to: {report_path}")
+    return report_path
+
 
 def initialize_model(model_config, model_type, C_in, C_out):
-
     if model_type == "gtcnn": 
-
         hidden_ch = model_config[model_type]["hidden_channels"] 
         K = model_config[model_type]["chebyshev_order"] 
         num_layers = model_config[model_type]["num_layers"] 
@@ -143,14 +153,26 @@ def initialize_model(model_config, model_type, C_in, C_out):
                       num_layers=num_layers, dropout=dropout)
 
     elif model_type == "cnn3d": 
-
         hidden_ch = model_config[model_type]["hidden_channels"]
-        # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+        num_layers = model_config[model_type].get("num_layers", 4)
+        dropout = model_config[model_type].get("dropout", 0.1)
+        use_bn = model_config[model_type].get("use_bn", True)
+        
+        # Choose which version to use
+        model_type_variant = model_config[model_type].get("variant", "simple")
+        
+        if model_type_variant == "full":
+            model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                         num_layers=num_layers, dropout=dropout, use_bn=use_bn)
+        else:
+            model = SimpleCNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                               num_layers=num_layers, dropout=dropout, use_bn=use_bn)
 
     else:
-        raise ValueError(f"Unknown model type !!!")
+        raise ValueError(f"Unknown model type: {model_type}")
     
     return model
+
 
 def main():
     args = parse_args()
@@ -169,7 +191,7 @@ def main():
     category = args.model_category
     model_config = model_config[category]
 
-    # Dataloaders
+    # Dataloaders - use eval_mode=True for test set
     test_loader = get_dataloaders(config=config, model_category=category, eval_mode=True)
     C_in = test_loader.dataset.in_channels
     C_out = test_loader.dataset.out_channels 
@@ -195,12 +217,26 @@ def main():
         print(f"Evaluating {args.model_type} baseline (no model required).")
 
     # Evaluate
-    print("Evaluating on test set...")
+    print("\nEvaluating on test set...")
     metrics = evaluate(model, args.model_type, test_loader, device, config)
 
-    # Save to text file
+    # Print results
+    print("\n" + "="*50)
+    print(f"Evaluation Results for {args.model_type.upper()}:")
+    print("="*50)
+    for metric, value in metrics.items():
+        print(f"{metric:>10}: {value:.6f}")
+    print("="*50)
+
+    # Save detailed report
     report_dir = root_dir / "reports"
-    save_report(metrics, args.model_type, ckpt_path, report_dir)
+    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir)
+    
+    # Also save metrics in a more machine-readable format
+    metrics_path = report_dir / f"metrics_{args.model_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
+    with open(metrics_path, 'w') as f:
+        yaml.dump({args.model_type: {k: float(v) for k, v in metrics.items()}}, f)
+    print(f"Metrics saved to: {metrics_path}")
 
 
 if __name__ == "__main__":

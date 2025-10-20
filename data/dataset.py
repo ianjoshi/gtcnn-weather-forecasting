@@ -115,6 +115,10 @@ class ERA5Dataset(Dataset):
         # Cache grid size
         _, _, self.H, self.W = self.data.shape
 
+        # before adding temporal encodings
+        self.num_var_channels = len(self.levels)  # exclude sin/cos of season
+        self.level_to_idx = {lev: i for i, lev in enumerate(self.levels)}
+
         # Add temporal (seasonal) encodings
         temporal_features, _ = self.temporal_encoding(filtered_times, self.H, self.W)
         self.data = torch.cat([self.data, temporal_features], dim=1)
@@ -239,7 +243,9 @@ class ERA5Dataset(Dataset):
         target_idx = end + self.forecast_horizon - 1
 
         X = self.data[start:end]       # (input_length, channels, H, W)
-        y = self.data[target_idx]      # (channels, H, W)
+        # added: ensure our target doesn't include temporal encodings
+        y_full = self.data[target_idx]  # (C_vars + 2, H, W)
+        y = y_full[: self.num_var_channels]  # (C_vars, H, W)
 
         if self.graph_mode:
             # Get day-of-year for the target
@@ -267,8 +273,8 @@ class ERA5Dataset(Dataset):
     @property
     def out_channels(self):
         """Number of output feature channels per node."""
-        return self.C      # we assume predicting the same variables as input (5 features).
-    
+        #return self.C      # we assume predicting the same variables as input (5 features).
+        return self.num_var_channels
     @property
     def normalization_stats(self):
         """Return dictionary of {variable_name: (min, max)} for denormalization."""

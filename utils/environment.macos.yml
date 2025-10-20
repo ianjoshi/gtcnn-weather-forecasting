@@ -1,0 +1,34 @@
+name: weather-cast
+channels:
+  - conda-forge
+  - pytorch
+dependencies:
+  - python=3.10
+  - pip
+  # core scientific stack
+  - numpy
+  - scipy
+  - pandas
+  - xarray
+  - netcdf4
+  - h5py
+  - matplotlib
+  - scikit-learn
+  - pyproj
+  - rasterio
+  - cartopy
+  # IO / cloud / utils (match your project’s usage)
+  - requests
+  - zarr
+  - fsspec
+  - gcsfs
+  - tqdm
+  - ipykernel
+  # pytorch (no CUDA on mac; MPS works automatically on Apple Silicon)
+  - pytorch
+  - torchvision
+  - torchaudio
+  - pip:
+      # Install PyG meta-package (CPU wheels on mac)
+      - torch-geometric
+
