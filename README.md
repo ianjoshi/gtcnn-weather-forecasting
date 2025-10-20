@@ -46,7 +46,7 @@ The project uses ERA5 reanalysis data at 5.625° resolution. The dataset include
 - 10m V-component of wind
 
 The data is split into the following time periods:
-- Training: 2005-01-01 to 2014-12-31
+- Training: 2010-01-01 to 2014-12-31
 - Validation: 2015-01-01 to 2016-12-31
 - Testing: 2017-01-01 to 2018-12-31
 
@@ -59,7 +59,7 @@ To train the model:
 ```bash
 python scripts/train.py 
 ```
-You can also input the model type. Default is set to GTCNN.
+You can also input the model type. Default is set to GTCNN. The other choices include 3D CNN.
 
 ### Evaluation
 
@@ -68,7 +68,7 @@ To evaluate the model:
 ```bash
 python scripts/evaluate.py 
 ```
-You can also input the model type and the checkpoint. Default is set to GTCNN.
+You can also input the model type and the checkpoint. Default is set to GTCNN. The other choices include 3D CNN and two baselines (persistance and climatology).
 
 ### Configuration
 
