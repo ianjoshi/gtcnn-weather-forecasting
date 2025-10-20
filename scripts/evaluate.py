@@ -6,10 +6,9 @@ import yaml
 from pathlib import Path
 import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
-
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
-from models.cnn3d import CNN3D, SimpleCNN3D  # ADD THIS IMPORT
+from models.cnn3d import CNN3D, SimpleCNN3D  
 
 
 def parse_args():
@@ -127,12 +126,10 @@ def evaluate(model, model_type, loader, device, config):
 def save_report(metrics, model_type, ckpt_path, report_dir):
     # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    report_path = report_dir / f"report_{model_type}_{timestamp}.txt"
+    report_path = report_dir / f"report_{model_type}.txt"
 
     with open(report_path, "w") as f:
         f.write(f"Performance Report for {model_type.upper()}\n")
-        f.write(f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
         f.write(f"Checkpoint: {ckpt_path}\n")
         f.write("=" * 50 + "\n")
         for k, v in metrics.items():
@@ -209,12 +206,9 @@ def main():
 
         assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
 
-        ckpt = torch.load(ckpt_path, map_location=device)
-        model.load_state_dict(ckpt["model_state_dict"])
-        print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
-    else:
-        model = None
-        print(f"Evaluating {args.model_type} baseline (no model required).")
+    ckpt = torch.load(ckpt_path, map_location=device)
+    model.load_state_dict(ckpt["model_state_dict"])
+    print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
 
     # Evaluate
     print("\nEvaluating on test set...")
@@ -231,12 +225,6 @@ def main():
     # Save detailed report
     report_dir = root_dir / "reports"
     report_path = save_report(metrics, args.model_type, ckpt_path, report_dir)
-    
-    # Also save metrics in a more machine-readable format
-    metrics_path = report_dir / f"metrics_{args.model_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.yaml"
-    with open(metrics_path, 'w') as f:
-        yaml.dump({args.model_type: {k: float(v) for k, v in metrics.items()}}, f)
-    print(f"Metrics saved to: {metrics_path}")
 
 
 if __name__ == "__main__":
