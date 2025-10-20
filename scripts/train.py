@@ -17,6 +17,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
+        choices=["gtcnn", "cnn3d"],
         help="Model type to train",
     )
     return parser.parse_args()
