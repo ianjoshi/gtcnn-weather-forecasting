@@ -118,6 +118,12 @@ class ERA5Dataset(Dataset):
         temporal_features, _ = self.temporal_encoding(filtered_times, self.H, self.W)
         self.data = torch.cat([self.data, temporal_features], dim=1)
 
+        # added: makes explicit the original number of channels, and
+        # which "level" (variable name) corresponds to which index
+        self.num_var_channels = self.data.shape[1]
+        # Map level name -> channel index, e.g. {"u10": 0, "v10": 1, ...}
+        self.level_to_idx = {lev: i for i, lev in enumerate(self.levels)}
+
         # Cache channel size
         _, self.C, _, _ = self.data.shape
 
@@ -204,7 +210,9 @@ class ERA5Dataset(Dataset):
         target_idx = end + self.forecast_horizon - 1
 
         X = self.data[start:end]       # (input_length, channels, H, W)
-        y = self.data[target_idx]      # (channels, H, W)
+        # added: ensure our target doesn't include temporal encodings
+        y_full = self.data[target_idx]  # (C_vars + 2, H, W)
+        y = y_full[: self.num_var_channels]  # (C_vars, H, W)
 
         if self.graph_mode:
             graph = to_spatio_temporal_graph(
@@ -225,8 +233,8 @@ class ERA5Dataset(Dataset):
     @property
     def out_channels(self):
         """Number of output feature channels per node."""
-        return self.C      # we assume predicting the same variables as input (5 features).
-    
+        #return self.C      # we assume predicting the same variables as input (5 features).
+        return self.num_var_channels
     @property
     def normalization_stats(self):
         """Return dictionary of {variable_name: (min, max)} for denormalization."""
