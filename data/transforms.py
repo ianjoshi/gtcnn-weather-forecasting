@@ -158,7 +158,8 @@ def to_spatio_temporal_graph(X: torch.Tensor, y: torch.Tensor,
     X_nodes = X.permute(0, 2, 3, 1).reshape(num_nodes, C)
 
     # Labels: flatten target (C, H, W) to (H*W, C)
-    y_nodes = y.permute(1, 2, 0).reshape(H * W, C)
+    C_y = y.shape[0]
+    y_nodes = y.permute(1, 2, 0).reshape(H * W, C_y)
 
     # Build edges
     edge_index = build_spatio_temporal_edges(
