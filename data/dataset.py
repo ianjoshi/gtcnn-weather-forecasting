@@ -114,15 +114,13 @@ class ERA5Dataset(Dataset):
         # Cache grid size
         _, _, self.H, self.W = self.data.shape
 
+        # before adding temporal encodings
+        self.num_var_channels = len(self.levels)  # exclude sin/cos of season
+        self.level_to_idx = {lev: i for i, lev in enumerate(self.levels)}
+
         # Add temporal (seasonal) encodings
         temporal_features, _ = self.temporal_encoding(filtered_times, self.H, self.W)
         self.data = torch.cat([self.data, temporal_features], dim=1)
-
-        # added: makes explicit the original number of channels, and
-        # which "level" (variable name) corresponds to which index
-        self.num_var_channels = self.data.shape[1]
-        # Map level name -> channel index, e.g. {"u10": 0, "v10": 1, ...}
-        self.level_to_idx = {lev: i for i, lev in enumerate(self.levels)}
 
         # Cache channel size
         _, self.C, _, _ = self.data.shape
