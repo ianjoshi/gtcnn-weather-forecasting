@@ -9,6 +9,7 @@ from huggingface_hub import snapshot_download
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.cnn3d import CNN3D, SimpleCNN3D
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Train ML models on ERA5 data")
@@ -16,6 +17,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
+        choices=["gtcnn", "cnn3d"],
         help="Model type to train",
     )
     return parser.parse_args()
@@ -87,11 +89,25 @@ def initialize_model(model_config, model_type, C_in, C_out):
         dropout = model_config[model_type]["dropout"] 
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
-
+                      
+                      
+    # Choose which version to use - CNN3D for full U-Net style, SimpleCNN3D for faster training
+        
     elif model_type == "cnn3d": 
-
         hidden_ch = model_config[model_type]["hidden_channels"]
-        # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+        num_layers = model_config[model_type].get("num_layers", 4)
+        dropout = model_config[model_type].get("dropout", 0.1)
+        use_bn = model_config[model_type].get("use_bn", True)
+        
+        # Choose which version to use - CNN3D for full U-Net style, SimpleCNN3D for faster training
+        model_type_variant = model_config[model_type].get("variant", "simple")
+        
+        if model_type_variant == "full":
+            model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                         num_layers=num_layers, dropout=dropout, use_bn=use_bn)
+        else:
+            model = SimpleCNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                               num_layers=num_layers, dropout=dropout, use_bn=use_bn)
 
     else:
         raise ValueError(f"Unknown model type !!!")

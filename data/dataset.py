@@ -20,7 +20,8 @@ class ERA5Dataset(Dataset):
                  neighborhood,
                  graph_type,
                  graph_mode=True,
-                 drop_leap=True):
+                 drop_leap=True,
+                 climatology=None):
         """
         ERA5 dataset loader for spatio-temporal forecasting.
 
@@ -125,6 +126,17 @@ class ERA5Dataset(Dataset):
         # Cache channel size
         _, self.C, _, _ = self.data.shape
 
+        # Store filtered times for later use (climatology, day-of-year lookup)
+        self.filtered_times = filtered_times
+
+        # Compute or use provided climatology
+        if climatology is not None:
+            # Use precomputed climatology (for val/test)
+            self.climatology = climatology
+        else:
+            # Compute climatology only for training split
+            self.climatology = self._compute_climatology(self.filtered_times)
+
     def _drop_leap_days(self, arr, times):
         """
         Remove all leap-day entries (February 29) from the dataset.
@@ -144,6 +156,29 @@ class ERA5Dataset(Dataset):
         ])
 
         return arr[mask], times[mask]
+    
+    def _compute_climatology(self, times):
+        """
+        Compute climatological mean for each day-of-year.
+        
+        Returns:
+            torch.Tensor: Shape (365, C, H, W) - mean for each day of year
+        """
+        doy_array = np.array([pd.Timestamp(t).dayofyear for t in times])
+        climatology = torch.zeros(366, self.C, self.H, self.W)  # Use 366 to be safe
+        counts = torch.zeros(366, 1, 1, 1)
+        
+        for t_idx, doy in enumerate(doy_array):
+            doy_idx = min(doy - 1, 365)  # Clamp to valid range
+            climatology[doy_idx] += self.data[t_idx]
+            counts[doy_idx] += 1
+        
+        # Avoid division by zero
+        counts = torch.where(counts == 0, torch.ones_like(counts), counts)
+        climatology = climatology / counts
+        
+        # Return only 365 days (drop day 366 if it exists)
+        return climatology[:365]
 
     def temporal_encoding(self, times, H, W):
         """
@@ -213,11 +248,18 @@ class ERA5Dataset(Dataset):
         y = y_full[: self.num_var_channels]  # (C_vars, H, W)
 
         if self.graph_mode:
+            # Get day-of-year for the target
+            target_doy = pd.Timestamp(self.filtered_times[target_idx]).dayofyear
+
             graph = to_spatio_temporal_graph(
                 X, y, self.H, self.W,
                 neighborhood=self.neighborhood,
                 graph_type=self.graph_type
             )
+            # Attach day-of-year for climatology baseline
+
+            graph.doy = torch.tensor(target_doy, dtype=torch.long)
+
             return graph
         else:
             # Return plain tensors for CNN baseline model
@@ -231,7 +273,7 @@ class ERA5Dataset(Dataset):
     @property
     def out_channels(self):
         """Number of output feature channels per node."""
-        #return self.C      # we assume predicting the same variables as input (5 features).
+        # return self.C      # we assume predicting the same variables as input (5 features).
         return self.num_var_channels
     @property
     def normalization_stats(self):

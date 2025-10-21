@@ -46,7 +46,7 @@ The project uses ERA5 reanalysis data at 5.625° resolution. The dataset include
 - 10m V-component of wind
 
 The data is split into the following time periods:
-- Training: 2005-01-01 to 2014-12-31
+- Training: 2010-01-01 to 2014-12-31
 - Validation: 2015-01-01 to 2016-12-31
 - Testing: 2017-01-01 to 2018-12-31
 
@@ -59,7 +59,7 @@ To train the model:
 ```bash
 python scripts/train.py 
 ```
-You can also input the model type. Default is set to GTCNN.
+You can also input the model type. Default is set to GTCNN. The other choices include 3D CNN.
 
 ### Evaluation
 
@@ -68,7 +68,7 @@ To evaluate the model:
 ```bash
 python scripts/evaluate.py 
 ```
-You can also input the model type and the checkpoint. Default is set to GTCNN.
+You can also input the model type and the checkpoint. Default is set to GTCNN. The other choices include 3D CNN and two baselines (persistance and climatology).
 
 ### Configuration
 
@@ -85,25 +85,31 @@ Key options you will commonly change:
 - Model architecture parameters (hidden dimension, layers, dropout)
 - Training hyperparameters (batch size, learning rate, epochs)
 
-## Project Structure (updated)
+## Project Structure
 
 ```
-├── data/                # Data processing modules
-│   ├── dataloader.py    # PyTorch data loaders 
-│   ├── dataset.py       # Dataset classes 
-│   └── transforms.py    # Data transforms and prepocessing
-├── models/              # Model implementations
-│   ├── cnn3d.py         # 3D-CNN baseline
-│   └── gtcnn.py         # Graph-temporal CNN (GTCNN)
-├── scripts/             # Training and evaluation CLI 
-│   ├── train.py
-│   └── evaluate.py
-├── utils/               # Configuration and environment 
-│   ├── base_config.yaml
-│   ├── model_config.yaml
-│   └── environment.yml
-├── checkpoints/         # Trained model checkpoints
-└── reports/             # Experiment reports / logs
+├── data/                      # Data processing package
+│   ├── __init__.py
+│   ├── dataloader.py          # Creates PyTorch DataLoaders and batching logic
+│   ├── dataset.py             # ERA5Dataset: load NetCDF and create graph node features
+│   └── transforms.py          # Normalization and spatial/temporal transforms
+├── models/                    
+│   ├── __init__.py            
+│   ├── cnn3d.py               # 3D-CNN baseline (gridded input)
+│   └── gtcnn.py               # GTCNN: graph-temporal convolutional model
+├── scripts/                   
+│   ├── train.py               # Training loop 
+│   └── evaluate.py            # Evaluation and reporting utilities
+├── checkpoints/               # Saved model weights (best model files)
+├── plotters/                  # Plotting helpers
+│   └── metrics_plotter.py     
+├── plots/                     # Generated figures 
+├── reports/                   # Textual experiment summaries 
+├── utils/                     
+│   ├── base_config.yaml       # Dataset and training defaults
+│   ├── model_config.yaml      # Model hyperparameters and architecture choices
+│   └── environment.yml        # Conda environment for reproducibility
+└── README.md                  # This file
 ```
 
 ## Checkpoints and Reports
