@@ -133,32 +133,27 @@ def to_spatio_temporal_graph(X: torch.Tensor, y: torch.Tensor,
     """
     Convert an ERA5 sample into a spatio-temporal PyG Data object.
 
-    Each grid cell at each timestep becomes a node. 
-    Spatial and temporal edges are constructed according to the chosen settings.
-
     Args:
-        X (Tensor): Input sequence of shape (T, C, H, W)
-        y (Tensor): Target at forecast horizon, shape (C, H, W)
-        H (int): Grid height
-        W (int): Grid width
-        neighborhood (int): 4 or 8 spatial neighbors
-        graph_type (str): "cartesian" (self temporal links) or 
-                          "strong" (spatial neighbors across timesteps)
-
+        X: (T, Cx, H, W)   # Cx may include extra channels (e.g., sin/cos temporal encodings)
+        y: (Cy, H, W)      # Cy = number of physical variables only
     Returns:
-        Data: torch_geometric.data.Data object with:
-              - x: Node features, shape [T*H*W, C]
-              - edge_index: Graph edges, shape [2, num_edges]
-              - y: Node labels, shape [H*W, C]
+        Data with:
+          - x: [T*H*W, Cx]
+          - y: [H*W,   Cy]
     """
-    T, C, _, _ = X.shape
+    T, Cx, _, _ = X.shape            # channels from X (e.g., vars + 2 temporal)
+    Cy = y.shape[0]                  # channels from y (only physical vars)
+
+    # assert that y doesn't accidentally include the temporal channels
+    assert Cy <= Cx, f"y has more channels ({Cy}) than X ({Cx}); check preprocessing."
+
     num_nodes = H * W * T
 
-    # Node features: flatten (T, H, W, C) to (T*H*W, C)
-    X_nodes = X.permute(0, 2, 3, 1).reshape(num_nodes, C)
+    # Node features from X: (T, H, W, Cx) -> (T*H*W, Cx)
+    X_nodes = X.permute(0, 2, 3, 1).reshape(num_nodes, Cx)
 
-    # Labels: flatten target (C, H, W) to (H*W, C)
-    y_nodes = y.permute(1, 2, 0).reshape(H * W, C)
+    # Labels from y: (H, W, Cy) -> (H*W, Cy)
+    y_nodes = y.permute(1, 2, 0).reshape(H * W, Cy)
 
     # Build edges
     edge_index = build_spatio_temporal_edges(
@@ -166,3 +161,4 @@ def to_spatio_temporal_graph(X: torch.Tensor, y: torch.Tensor,
     )
 
     return Data(x=X_nodes, edge_index=edge_index, y=y_nodes)
+
