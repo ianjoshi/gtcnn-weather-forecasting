@@ -1,14 +1,14 @@
 import argparse
 import torch
 import torch.nn.functional as F
+import torch_geometric
 import yaml
 from pathlib import Path
 import numpy as np
-from datetime import datetime
 from sklearn.metrics import mean_absolute_error, r2_score
-
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.cnn3d import CNN3D, SimpleCNN3D  
 
 
 def parse_args():
@@ -17,30 +17,73 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        help="Model type to evaluate",
+        choices=["gtcnn", "cnn3d", "persistence", "climatology"],
+        help="Model type to evaluate or 'persistence' for baseline",
     )
     parser.add_argument(
         "--checkpoint",
         type=str,
-        default="./checkpoints/best_gtcnn.pt",
-        help="Path to checkpoint file (.pt). If not provided, loads best_<model>.pt from checkpoints/",
+        default=None, # For example, for GTCNN: "./checkpoints/best_gtcnn.pt"
+        help="Path to checkpoint file (.pt). Optional for persistence. If not provided for a model, loads best_<model>.pt from checkpoints/",
+    )
+    parser.add_argument(
+        "--model_category",
+        type=str,
+        default="graph_based",
+        choices=["graph_based", "grid_based"],
+        help="Dataset format (graph-based or grid-based)",
     )
     return parser.parse_args()
 
 
 @torch.no_grad()
 def evaluate(model, model_type, loader, device, config):
-    model.eval()
+    if model_type in ["gtcnn", "cnn3d"]:
+        model.eval()
+    
     total_loss = 0.0
 
     all_preds = []
     all_targets = []
 
+    # Get dataset properties
+    dataset = loader.dataset
+    H, W = dataset.H, dataset.W
+    C_out = dataset.out_channels
+    T = config["graph"]["input_length"] if "graph" in config else config.get("input_length", 1)
+
     for batch in loader:
-        if model_type == "gtcnn":
+        if model_type == "persistence":
+            # Determine data format
+            if isinstance(batch, torch_geometric.data.Batch):
+                batch = batch.to(device)
+                N = H * W
+                bs = batch.y.size(0) // N
+                y_hat = batch.x.view(bs, T, N, C_out)[:, -1, :, :].reshape(bs * N, C_out)
+                y_true = batch.y
+            else:  # Grid-based
+                X, y_true = batch
+                X, y_true = X.to(device), y_true.to(device)
+                y_hat = X[:, -1, :, :, :] if X.dim() == 5 and X.shape[1] == T else X[:, :, -1, :, :]
+
+        elif model_type == "climatology":
+            # Determine data format (same as persistence)
+            if isinstance(batch, torch_geometric.data.Batch):
+                batch = batch.to(device)
+                N = H * W
+                bs = batch.doy.size(0)
+                C = dataset.C
+                
+                climatology = dataset.climatology.to(device)
+                clim_batch = climatology[batch.doy - 1]
+                y_hat = clim_batch.permute(0, 2, 3, 1).reshape(bs * N, C)
+                y_true = batch.y
+            else:  # Grid-based
+                raise NotImplementedError("Climatology baseline not implemented for grid-based data.")
+
+        elif model_type == "gtcnn":
             batch = batch.to(device)
             N = batch.y.size(0)
-            T = config["graph"]["input_length"]
 
             y_hat = model(batch.x, batch.edge_index, N, T)
             y_true = batch.y
@@ -49,6 +92,13 @@ def evaluate(model, model_type, loader, device, config):
             X, y_true = batch
             X, y_true = X.to(device), y_true.to(device)
             y_hat = model(X)
+            
+            # For 3D CNN, ensure output has the right shape
+            # Model should output [B, C_out, H, W], target is [B, C_out, H, W]
+            if y_hat.dim() == 4 and y_true.dim() == 4:
+                # Flatten spatial dimensions for metric calculation
+                y_hat = y_hat.reshape(y_hat.size(0), y_hat.size(1), -1)
+                y_true = y_true.reshape(y_true.size(0), y_true.size(1), -1)
 
         loss = F.mse_loss(y_hat, y_true)
         total_loss += loss.item()
@@ -73,7 +123,6 @@ def evaluate(model, model_type, loader, device, config):
         "Loss": total_loss / len(loader),
     }
 
-
 def save_report(metrics, model_type, ckpt_path, report_dir):
     # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
@@ -82,17 +131,17 @@ def save_report(metrics, model_type, ckpt_path, report_dir):
     with open(report_path, "w") as f:
         f.write(f"Performance Report for {model_type.upper()}\n")
         f.write(f"Checkpoint: {ckpt_path}\n")
-        f.write("-" * 50 + "\n")
+        f.write("=" * 50 + "\n")
         for k, v in metrics.items():
             f.write(f"{k:>10}: {v:.6f}\n")
-        f.write("-" * 50 + "\n")
+        f.write("=" * 50 + "\n")
 
     print(f"Report saved to: {report_path}")
+    return report_path
+
 
 def initialize_model(model_config, model_type, C_in, C_out):
-
     if model_type == "gtcnn": 
-
         hidden_ch = model_config[model_type]["hidden_channels"] 
         K = model_config[model_type]["chebyshev_order"] 
         num_layers = model_config[model_type]["num_layers"] 
@@ -101,14 +150,26 @@ def initialize_model(model_config, model_type, C_in, C_out):
                       num_layers=num_layers, dropout=dropout)
 
     elif model_type == "cnn3d": 
-
         hidden_ch = model_config[model_type]["hidden_channels"]
-        # model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out)
+        num_layers = model_config[model_type].get("num_layers", 4)
+        dropout = model_config[model_type].get("dropout", 0.1)
+        use_bn = model_config[model_type].get("use_bn", True)
+        
+        # Choose which version to use
+        model_type_variant = model_config[model_type].get("variant", "simple")
+        
+        if model_type_variant == "full":
+            model = CNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                         num_layers=num_layers, dropout=dropout, use_bn=use_bn)
+        else:
+            model = SimpleCNN3D(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                               num_layers=num_layers, dropout=dropout, use_bn=use_bn)
 
     else:
-        raise ValueError(f"Unknown model type !!!")
+        raise ValueError(f"Unknown model type: {model_type}")
     
     return model
+
 
 def main():
     args = parse_args()
@@ -124,10 +185,10 @@ def main():
     print("Config loaded!")
 
     # Model category
-    category = "graph_based" if args.model_type in model_config.get("graph_based", {}).keys() else "grid_based"
+    category = args.model_category
     model_config = model_config[category]
 
-    # Dataloaders
+    # Dataloaders - use eval_mode=True for test set
     test_loader = get_dataloaders(config=config, model_category=category, eval_mode=True)
     C_in = test_loader.dataset.in_channels
     C_out = test_loader.dataset.out_channels 
@@ -135,25 +196,35 @@ def main():
     print("Using device:", device)
 
     # Model selection
-    model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
-    model = model.to(device)
+    ckpt_path = args.model_type # For baselines, this is just the model name
+    if args.model_type in ["gtcnn", "cnn3d"]:
+        model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
+        model = model.to(device)
 
-    # Load checkpoint
-    ckpt_path = Path(args.checkpoint)
+        # Load checkpoint
+        ckpt_path = Path(args.checkpoint) # This overwrites the string with a Path object
 
-    assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
+        assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
 
     ckpt = torch.load(ckpt_path, map_location=device)
     model.load_state_dict(ckpt["model_state_dict"])
     print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
 
     # Evaluate
-    print("Evaluating on test set...")
+    print("\nEvaluating on test set...")
     metrics = evaluate(model, args.model_type, test_loader, device, config)
 
-    # Save to text file
+    # Print results
+    print("\n" + "="*50)
+    print(f"Evaluation Results for {args.model_type.upper()}:")
+    print("="*50)
+    for metric, value in metrics.items():
+        print(f"{metric:>10}: {value:.6f}")
+    print("="*50)
+
+    # Save detailed report
     report_dir = root_dir / "reports"
-    save_report(metrics, args.model_type, ckpt_path, report_dir)
+    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir)
 
 
 if __name__ == "__main__":
