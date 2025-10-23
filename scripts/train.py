@@ -9,6 +9,7 @@ from huggingface_hub import snapshot_download
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.sign import SIGN
 from models.cnn3d import CNN3D, SimpleCNN3D
 
 def parse_args():
@@ -17,7 +18,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        choices=["gtcnn", "cnn3d"],
+        choices=["gtcnn", "sign", "cnn3d"],
         help="Model type to train",
     )
     return parser.parse_args()
@@ -32,6 +33,14 @@ def train_one_epoch(model, model_type, loader, optimizer, device, config):
         optimizer.zero_grad()
 
         if model_type == "gtcnn": 
+            batch = batch.to(device)
+            N = batch.y.size(0)  # number of spatial nodes (H*W)
+            T = config["graph"]["input_length"]
+
+            y_hat = model(batch.x, batch.edge_index, N, T)
+            loss = F.mse_loss(y_hat, batch.y)
+
+        elif model_type == "sign":
             batch = batch.to(device)
             N = batch.y.size(0)  # number of spatial nodes (H*W)
             T = config["graph"]["input_length"]
@@ -68,6 +77,14 @@ def validate(model, model_type, loader, device, config):
                 y_hat = model(batch.x, batch.edge_index, N, T)
                 loss = F.mse_loss(y_hat, batch.y)
 
+            elif model_type == "sign":
+                batch = batch.to(device)
+                N = batch.y.size(0)
+                T = config["graph"]["input_length"]
+
+                y_hat = model(batch.x, batch.edge_index, N, T)
+                loss = F.mse_loss(y_hat, batch.y)
+
             elif model_type == "cnn3d":
                 X, y = batch
                 X, y = X.to(device), y.to(device)
@@ -90,6 +107,14 @@ def initialize_model(model_config, model_type, C_in, C_out):
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
                       
+    elif model_type == "sign":
+        hidden_ch = model_config[model_type]["hidden_channels"]
+        K = model_config[model_type]["K"]
+        dropout = model_config[model_type]["dropout"]
+        use_bn = model_config[model_type]["use_bn"]
+        
+        model = SIGN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                    K=K, dropout=dropout, use_bn=use_bn)
                       
     # Choose which version to use - CNN3D for full U-Net style, SimpleCNN3D for faster training
         
@@ -154,6 +179,19 @@ def main():
     # Model selection
     model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
     model = model.to(device)
+    
+    # Precompute adjacency matrices for SIGN
+    if args.model_type == "sign":
+        # Get a SINGLE sample (not batched) to extract edge_index structure
+        single_sample = train_loader.dataset[0]  # Get one graph directly from dataset
+        N = single_sample.y.size(0)  # Number of spatial nodes (H*W)
+        T = config["graph"]["input_length"]
+        
+        # Move edge_index to device and precompute
+        edge_index = single_sample.edge_index.to(device)
+        model.precompute_adjacency_powers(edge_index, N, T)
+        print(f"SIGN precomputation complete: {N} spatial nodes × {T} timesteps = {N*T} nodes per graph")
+    
     optimizer = optim.AdamW(model.parameters(),
                             lr=float(config["training"]["learning_rate"]),
                             weight_decay=float(config["training"]["weight_decay"]))

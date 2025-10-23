@@ -8,6 +8,7 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.sign import SIGN
 from models.cnn3d import CNN3D, SimpleCNN3D  
 
 
@@ -17,7 +18,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        choices=["gtcnn", "cnn3d", "persistence", "climatology"],
+        choices=["gtcnn", "sign", "cnn3d", "persistence", "climatology"],
         help="Model type to evaluate or 'persistence' for baseline",
     )
     parser.add_argument(
@@ -38,7 +39,7 @@ def parse_args():
 
 @torch.no_grad()
 def evaluate(model, model_type, loader, device, config):
-    if model_type in ["gtcnn", "cnn3d"]:
+    if model_type in ["gtcnn", "sign", "cnn3d"]:
         model.eval()
     
     total_loss = 0.0
@@ -82,6 +83,13 @@ def evaluate(model, model_type, loader, device, config):
                 raise NotImplementedError("Climatology baseline not implemented for grid-based data.")
 
         elif model_type == "gtcnn":
+            batch = batch.to(device)
+            N = batch.y.size(0)
+
+            y_hat = model(batch.x, batch.edge_index, N, T)
+            y_true = batch.y
+
+        elif model_type == "sign":
             batch = batch.to(device)
             N = batch.y.size(0)
 
@@ -149,6 +157,15 @@ def initialize_model(model_config, model_type, C_in, C_out):
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
 
+    elif model_type == "sign":
+        hidden_ch = model_config[model_type]["hidden_channels"]
+        K = model_config[model_type]["K"]
+        dropout = model_config[model_type]["dropout"]
+        use_bn = model_config[model_type]["use_bn"]
+        
+        model = SIGN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                    K=K, dropout=dropout, use_bn=use_bn)
+
     elif model_type == "cnn3d": 
         hidden_ch = model_config[model_type]["hidden_channels"]
         num_layers = model_config[model_type].get("num_layers", 4)
@@ -188,6 +205,12 @@ def main():
     category = args.model_category
     model_config = model_config[category]
 
+    # SIGN requires batch_size=1 for evaluation (to match precomputation)
+    if args.model_type == "sign":
+        original_batch_size = config["training"]["batch_size"]
+        config["training"]["batch_size"] = 1
+        print(f"SIGN detected: overriding batch_size from {original_batch_size} to 1 for evaluation")
+
     # Dataloaders - use eval_mode=True for test set
     test_loader = get_dataloaders(config=config, model_category=category, eval_mode=True)
     C_in = test_loader.dataset.in_channels
@@ -197,7 +220,7 @@ def main():
 
     # Model selection
     ckpt_path = args.model_type # For baselines, this is just the model name
-    if args.model_type in ["gtcnn", "cnn3d"]:
+    if args.model_type in ["gtcnn", "sign", "cnn3d"]:
         model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
         model = model.to(device)
 
@@ -206,9 +229,21 @@ def main():
 
         assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
 
-    ckpt = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
+        ckpt = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
+
+        # Precompute adjacency matrices for SIGN (must be done AFTER loading checkpoint)
+        if args.model_type == "sign":
+            # Get a SINGLE sample (not batched) to extract edge_index structure
+            single_sample = test_loader.dataset[0]
+            N = single_sample.y.size(0)  # Number of spatial nodes (H*W)
+            T = config["graph"]["input_length"]
+            
+            # Move edge_index to device and precompute
+            edge_index = single_sample.edge_index.to(device)
+            model.precompute_adjacency_powers(edge_index, N, T)
+            print(f"SIGN precomputation complete: {N} spatial nodes × {T} timesteps = {N*T} nodes per graph")
 
     # Evaluate
     print("\nEvaluating on test set...")
