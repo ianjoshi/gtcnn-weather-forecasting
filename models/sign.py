@@ -97,50 +97,11 @@ class SIGN(nn.Module):
                 self.precomputed_adj[k] = current_adj
             else:
                 # Sparse @ Sparse matrix multiplication
-                current_adj = torch.sparse.mm(current_adj, adj_norm)
+                # IMPORTANT: coalesce() combines duplicate indices for faster operations
+                current_adj = torch.sparse.mm(current_adj, adj_norm).coalesce()
                 self.precomputed_adj[k] = current_adj
         
         print(f"Precomputation complete. Stored {len(self.precomputed_adj)} adjacency powers.")
-    
-    def apply_sign_transformation(self, x):
-        """
-        Apply SIGN transformation: Z = σ([XΘ0, A1XΘ1, ..., ArXΘr])
-        
-        With Option B-2: Transform → Normalize (standard deep learning practice)
-        
-        Args:
-            x: [N*T, C_in] - input features for a SINGLE graph
-            
-        Returns:
-            [N*T, hidden_channels * (K+1)] - concatenated transformed features
-        """
-        if self.precomputed_adj is None:
-            raise ValueError("Adjacency matrices not precomputed! Call precompute_adjacency_powers() first.")
-        
-        # Apply separate learnable transformations to each shifted feature
-        transformed_features = []
-        
-        # Process all hops: Θ0, Θ1, ..., Θr
-        for k in range(self.K + 1):
-            # Apply shift (or use original for k=0)
-            if k == 0:
-                x_k = x  # No shift for original features
-            else:
-                # Sparse @ Dense matrix multiplication
-                x_k = torch.sparse.mm(self.precomputed_adj[k], x)  # A^k @ X
-            
-            # Apply learnable transformation Θk
-            x_theta_k = self.theta_layers[k](x_k)
-            
-            # Normalize AFTER transformation (standard practice)
-            if self.theta_norms is not None:
-                x_theta_k = self.theta_norms[k](x_theta_k)
-            
-            transformed_features.append(x_theta_k)
-        
-        # Concatenate all transformed features
-        z = torch.cat(transformed_features, dim=-1)  # [N*T, hidden_channels * (K+1)]
-        return z
 
     def forward(self, x, edge_index, N, T):
         """
@@ -161,31 +122,57 @@ class SIGN(nn.Module):
         # Reshape to separate batch dimension: [B*N*T, C] -> [B, N*T, C]
         x_batched = x.view(batch_size, nodes_per_graph, -1)
         
+        # Apply SIGN transformations to all graphs, then normalize across batch
+        all_transformed = []  # Store [K+1] tensors of shape [B, N*T, hidden]
+        
+        for k in range(self.K + 1):
+            batch_features = []
+            for b in range(batch_size):
+                x_single = x_batched[b]  # [N*T, C_in]
+                
+                # Apply shift (or use original for k=0)
+                if k == 0:
+                    x_k = x_single
+                else:
+                    x_k = torch.sparse.mm(self.precomputed_adj[k], x_single)
+                
+                # Apply learnable transformation Θk
+                x_theta_k = self.theta_layers[k](x_k)  # [N*T, hidden]
+                batch_features.append(x_theta_k)
+            
+            # Stack batch: [B, N*T, hidden]
+            x_theta_batch = torch.stack(batch_features, dim=0)
+            
+            # Normalize across ENTIRE batch (like GTCNN)
+            if self.theta_norms is not None:
+                # Reshape to [B*N*T, hidden] for GraphNorm
+                x_theta_flat = x_theta_batch.view(batch_size * nodes_per_graph, -1)
+                x_theta_flat = self.theta_norms[k](x_theta_flat)
+                x_theta_batch = x_theta_flat.view(batch_size, nodes_per_graph, -1)
+            
+            all_transformed.append(x_theta_batch)
+        
+        # Concatenate along feature dimension: [B, N*T, hidden*(K+1)]
+        z_batch = torch.cat(all_transformed, dim=-1)
+        
+        # Apply non-linearity and dropout
+        z_batch = F.relu(z_batch)
+        z_batch = self.dropout_layer(z_batch)
+        
+        # Final transformation
+        z_flat = z_batch.view(batch_size * nodes_per_graph, -1)  # [B*N*T, hidden*(K+1)]
+        X = self.omega(z_flat)  # [B*N*T, C_out]
+        X = X.view(batch_size, nodes_per_graph, -1)  # [B, N*T, C_out]
+        
+        # Extract last time slice from each graph
         outputs = []
         for b in range(batch_size):
-            # Extract single graph features
-            x_single = x_batched[b]  # [N*T, C_in]
-            
-            # SIGN transformation: Z = σ([XΘ0, A1XΘ1, ..., ArXΘr])
-            z = self.apply_sign_transformation(x_single)
-            
-            # Apply non-linearity σ (ReLU in paper)
-            z = F.relu(z)
-            
-            # Apply dropout
-            z = self.dropout_layer(z)
-            
-            # Final transformation: Y = ξ(ZΩ)
-            X = self.omega(z)  # [N*T, C_out]
-            
-            # Output only last time slice
             start = (T - 1) * N
             end = T * N
-            y_hat_single = X[start:end]  # [N, C_out]
-            
+            y_hat_single = X[b, start:end, :]  # [N, C_out]
             outputs.append(y_hat_single)
         
-        # Concatenate batch results: [B, N, C_out] -> [B*N, C_out]
+        # Concatenate batch results: [B*N, C_out]
         y_hat = torch.cat(outputs, dim=0)
         
         return y_hat

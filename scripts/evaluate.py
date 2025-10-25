@@ -10,7 +10,8 @@ from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
 from models.sign import SIGN
 from models.cnn3d import CNN3D, SimpleCNN3D  
-
+from tqdm import tqdm
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate trained model on test data")
@@ -34,6 +35,12 @@ def parse_args():
         choices=["graph_based", "grid_based"],
         help="Dataset format (graph-based or grid-based)",
     )
+    parser.add_argument(
+        "--save_name",
+        type=str,
+        default=None,
+        help="Custom name for the report file (default: report_{model_type}.txt)",
+    )
     return parser.parse_args()
 
 
@@ -52,8 +59,10 @@ def evaluate(model, model_type, loader, device, config):
     H, W = dataset.H, dataset.W
     C_out = dataset.out_channels
     T = config["graph"]["input_length"] if "graph" in config else config.get("input_length", 1)
+    N_single = H * W  # Single-graph node count (not batched)
 
-    for batch in loader:
+    start_time = time.time()
+    for batch in tqdm(loader, desc="Evaluating"):
         if model_type == "persistence":
             # Determine data format
             if isinstance(batch, torch_geometric.data.Batch):
@@ -84,16 +93,15 @@ def evaluate(model, model_type, loader, device, config):
 
         elif model_type == "gtcnn":
             batch = batch.to(device)
-            N = batch.y.size(0)
+            N = batch.y.size(0)  # Batched node count (works for GTCNN)
 
             y_hat = model(batch.x, batch.edge_index, N, T)
             y_true = batch.y
 
         elif model_type == "sign":
             batch = batch.to(device)
-            N = batch.y.size(0)
 
-            y_hat = model(batch.x, batch.edge_index, N, T)
+            y_hat = model(batch.x, batch.edge_index, N_single, T)
             y_true = batch.y
 
         elif model_type == "cnn3d":
@@ -115,6 +123,9 @@ def evaluate(model, model_type, loader, device, config):
         all_preds.append(y_hat.detach().cpu().numpy().ravel())
         all_targets.append(y_true.detach().cpu().numpy().ravel())
 
+    end_time = time.time()
+    print(f"Evaluation time: {end_time - start_time:.2f} seconds")
+
     all_preds = np.concatenate(all_preds)
     all_targets = np.concatenate(all_targets)
 
@@ -129,12 +140,18 @@ def evaluate(model, model_type, loader, device, config):
         "RMSE": rmse,
         "R2": r2,
         "Loss": total_loss / len(loader),
+        "Evaluation time": end_time - start_time,
     }
 
-def save_report(metrics, model_type, ckpt_path, report_dir):
+def save_report(metrics, model_type, ckpt_path, report_dir, save_name=None):
     # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = report_dir / f"report_{model_type}.txt"
+    
+    # Use custom save_name if provided, otherwise default to model_type
+    if save_name:
+        report_path = report_dir / f"report_{save_name}.txt"
+    else:
+        report_path = report_dir / f"report_{model_type}.txt"
 
     with open(report_path, "w") as f:
         f.write(f"Performance Report for {model_type.upper()}\n")
@@ -205,12 +222,6 @@ def main():
     category = args.model_category
     model_config = model_config[category]
 
-    # SIGN requires batch_size=1 for evaluation (to match precomputation)
-    if args.model_type == "sign":
-        original_batch_size = config["training"]["batch_size"]
-        config["training"]["batch_size"] = 1
-        print(f"SIGN detected: overriding batch_size from {original_batch_size} to 1 for evaluation")
-
     # Dataloaders - use eval_mode=True for test set
     test_loader = get_dataloaders(config=config, model_category=category, eval_mode=True)
     C_in = test_loader.dataset.in_channels
@@ -259,7 +270,7 @@ def main():
 
     # Save detailed report
     report_dir = root_dir / "reports"
-    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir)
+    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir, save_name=args.save_name)
 
 
 if __name__ == "__main__":
