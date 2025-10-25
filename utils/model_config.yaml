@@ -5,6 +5,12 @@ graph_based:
     num_layers: 3
     dropout: 0.1
 
+  sign:
+    hidden_channels: 64
+    K: 3
+    dropout: 0.1
+    use_bn: true
+
   tikhonov:                   
 
 grid_based:

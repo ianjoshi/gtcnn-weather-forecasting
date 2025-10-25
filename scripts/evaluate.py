@@ -8,8 +8,10 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error, r2_score
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+from models.sign import SIGN
 from models.cnn3d import CNN3D, SimpleCNN3D  
-
+from tqdm import tqdm
+import time
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate trained model on test data")
@@ -17,7 +19,7 @@ def parse_args():
         "--model_type",
         type=str,
         default="gtcnn",
-        choices=["gtcnn", "cnn3d", "persistence", "climatology"],
+        choices=["gtcnn", "sign", "cnn3d", "persistence", "climatology"],
         help="Model type to evaluate or 'persistence' for baseline",
     )
     parser.add_argument(
@@ -33,12 +35,18 @@ def parse_args():
         choices=["graph_based", "grid_based"],
         help="Dataset format (graph-based or grid-based)",
     )
+    parser.add_argument(
+        "--save_name",
+        type=str,
+        default=None,
+        help="Custom name for the report file (default: report_{model_type}.txt)",
+    )
     return parser.parse_args()
 
 
 @torch.no_grad()
 def evaluate(model, model_type, loader, device, config):
-    if model_type in ["gtcnn", "cnn3d"]:
+    if model_type in ["gtcnn", "sign", "cnn3d"]:
         model.eval()
     
     total_loss = 0.0
@@ -51,8 +59,10 @@ def evaluate(model, model_type, loader, device, config):
     H, W = dataset.H, dataset.W
     C_out = dataset.out_channels
     T = config["graph"]["input_length"] if "graph" in config else config.get("input_length", 1)
+    N_single = H * W  # Single-graph node count (not batched)
 
-    for batch in loader:
+    start_time = time.time()
+    for batch in tqdm(loader, desc="Evaluating"):
         if model_type == "persistence":
             # Determine data format
             if isinstance(batch, torch_geometric.data.Batch):
@@ -83,9 +93,15 @@ def evaluate(model, model_type, loader, device, config):
 
         elif model_type == "gtcnn":
             batch = batch.to(device)
-            N = batch.y.size(0)
+            N = batch.y.size(0)  # Batched node count (works for GTCNN)
 
             y_hat = model(batch.x, batch.edge_index, N, T)
+            y_true = batch.y
+
+        elif model_type == "sign":
+            batch = batch.to(device)
+
+            y_hat = model(batch.x, batch.edge_index, N_single, T)
             y_true = batch.y
 
         elif model_type == "cnn3d":
@@ -107,6 +123,9 @@ def evaluate(model, model_type, loader, device, config):
         all_preds.append(y_hat.detach().cpu().numpy().ravel())
         all_targets.append(y_true.detach().cpu().numpy().ravel())
 
+    end_time = time.time()
+    print(f"Evaluation time: {end_time - start_time:.2f} seconds")
+
     all_preds = np.concatenate(all_preds)
     all_targets = np.concatenate(all_targets)
 
@@ -121,12 +140,18 @@ def evaluate(model, model_type, loader, device, config):
         "RMSE": rmse,
         "R2": r2,
         "Loss": total_loss / len(loader),
+        "Evaluation time": end_time - start_time,
     }
 
-def save_report(metrics, model_type, ckpt_path, report_dir):
+def save_report(metrics, model_type, ckpt_path, report_dir, save_name=None):
     # Save metrics to a text report 
     report_dir.mkdir(parents=True, exist_ok=True)
-    report_path = report_dir / f"report_{model_type}.txt"
+    
+    # Use custom save_name if provided, otherwise default to model_type
+    if save_name:
+        report_path = report_dir / f"report_{save_name}.txt"
+    else:
+        report_path = report_dir / f"report_{model_type}.txt"
 
     with open(report_path, "w") as f:
         f.write(f"Performance Report for {model_type.upper()}\n")
@@ -148,6 +173,15 @@ def initialize_model(model_config, model_type, C_in, C_out):
         dropout = model_config[model_type]["dropout"] 
         model = GTCNN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out, K=K, 
                       num_layers=num_layers, dropout=dropout)
+
+    elif model_type == "sign":
+        hidden_ch = model_config[model_type]["hidden_channels"]
+        K = model_config[model_type]["K"]
+        dropout = model_config[model_type]["dropout"]
+        use_bn = model_config[model_type]["use_bn"]
+        
+        model = SIGN(in_channels=C_in, hidden_channels=hidden_ch, out_channels=C_out,
+                    K=K, dropout=dropout, use_bn=use_bn)
 
     elif model_type == "cnn3d": 
         hidden_ch = model_config[model_type]["hidden_channels"]
@@ -197,7 +231,7 @@ def main():
 
     # Model selection
     ckpt_path = args.model_type # For baselines, this is just the model name
-    if args.model_type in ["gtcnn", "cnn3d"]:
+    if args.model_type in ["gtcnn", "sign", "cnn3d"]:
         model = initialize_model(model_config=model_config, model_type=args.model_type, C_in=C_in, C_out=C_out)  
         model = model.to(device)
 
@@ -206,9 +240,21 @@ def main():
 
         assert ckpt_path.exists(), f"Checkpoint not found: {ckpt_path}"
 
-    ckpt = torch.load(ckpt_path, map_location=device)
-    model.load_state_dict(ckpt["model_state_dict"])
-    print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
+        ckpt = torch.load(ckpt_path, map_location=device)
+        model.load_state_dict(ckpt["model_state_dict"])
+        print(f"Loaded checkpoint from {ckpt_path} (epoch {ckpt.get('epoch', 'N/A')})")
+
+        # Precompute adjacency matrices for SIGN (must be done AFTER loading checkpoint)
+        if args.model_type == "sign":
+            # Get a SINGLE sample (not batched) to extract edge_index structure
+            single_sample = test_loader.dataset[0]
+            N = single_sample.y.size(0)  # Number of spatial nodes (H*W)
+            T = config["graph"]["input_length"]
+            
+            # Move edge_index to device and precompute
+            edge_index = single_sample.edge_index.to(device)
+            model.precompute_adjacency_powers(edge_index, N, T)
+            print(f"SIGN precomputation complete: {N} spatial nodes × {T} timesteps = {N*T} nodes per graph")
 
     # Evaluate
     print("\nEvaluating on test set...")
@@ -224,7 +270,7 @@ def main():
 
     # Save detailed report
     report_dir = root_dir / "reports"
-    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir)
+    report_path = save_report(metrics, args.model_type, ckpt_path, report_dir, save_name=args.save_name)
 
 
 if __name__ == "__main__":

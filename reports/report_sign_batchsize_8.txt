@@ -1,0 +1,10 @@
+Performance Report for SIGN
+Checkpoint: checkpoints/sign_batchsize_8.pt
+==================================================
+       MSE: 0.000651
+       MAE: 0.017161
+      RMSE: 0.025519
+        R2: 0.976155
+      Loss: 0.000651
+Evaluation time: 36.027108
+==================================================
