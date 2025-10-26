@@ -9,7 +9,9 @@ from sklearn.metrics import mean_absolute_error, r2_score
 
 from data.dataloader import get_dataloaders
 from models.gtcnn import GTCNN
+import copy
 
+TRANSFER_LEARNING = False
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Evaluate trained model on test data")
@@ -123,13 +125,25 @@ def main():
     with open(model_config_path, "r") as f:
         model_config = yaml.safe_load(f)
     print("Config loaded!")
+    if TRANSFER_LEARNING:
+        # --- EVAL-ONLY OVERRIDES: switch to hourly data with +1h lead ---
+        eval_config = copy.deepcopy(config)
+        eval_config["data"]["sample_rate"] = "hourly"  # evaluate on hourly data
+        eval_config["graph"]["forecast_horizon"] = 1  # predict +1 hour ahead
+
+        print(f"[EVAL] sample_rate: {config['data']['sample_rate']} -> {eval_config['data']['sample_rate']}")
+        print(
+            f"[EVAL] forecast_horizon: {config['graph']['forecast_horizon']} -> {eval_config['graph']['forecast_horizon']}")
 
     # Model category
     category = "graph_based" if args.model_type in model_config.get("graph_based", {}).keys() else "grid_based"
     model_config = model_config[category]
 
     # Dataloaders
-    outs = get_dataloaders(config=config, model_category=category, eval_mode=True)
+    if TRANSFER_LEARNING:
+        outs = get_dataloaders(config=eval_config, model_category=category, eval_mode=True)  # use eval_config
+    else:
+        outs = get_dataloaders(config=config, model_category=category, eval_mode=True)
 
     # accept either a single test loader or a tuple of (train,val,test)
     if isinstance(outs, tuple):
@@ -165,7 +179,10 @@ def main():
 
     # Evaluate
     print("Evaluating on test set...")
-    metrics = evaluate(model, args.model_type, test_loader, device, config)
+    if TRANSFER_LEARNING:
+        metrics = evaluate(model, args.model_type, test_loader, device, eval_config)
+    else:
+        metrics = evaluate(model, args.model_type, test_loader, device, config)
 
     # Save to text file
     report_dir = root_dir / "reports"
