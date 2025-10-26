@@ -1,0 +1,5 @@
+Training Summary for SIGN
+Best model saved to: /home/funkytunk/Documents/Netherlands/msc_dsait/q6/graph_machine_learning/project/gml-g12-weather-forecasting/checkpoints/sign_batchsize_8.pt
+Best validation loss: 0.0007
+Total training time: 52.00 minutes (3119.75s)
+Total epochs trained: 20
