@@ -112,13 +112,19 @@ def build_spatio_temporal_edges(H: int, W: int, T: int,
                     )
 
             elif graph_type == "strong":
-                # Temporal edges: connect to neighbors at next timestep
+                # Connect node_t -> neighbor_{t+1}
                 edges_next = spatial_edges + next_offset
                 strong_edges = torch.vstack([
-                    edges_next[0] - H * W,  # shift sources back one timestep
+                    edges_next[0] - H * W,
                     edges_next[1]
                 ])
                 all_edges.append(strong_edges)
+
+                # Also connect node_t -> itself_{t+1}
+                for i in range(H * W):
+                    all_edges.append(
+                        torch.tensor([[offset + i], [next_offset + i]], dtype=torch.long)
+                    )
 
             else:
                 raise ValueError(f"Unknown graph_type: {graph_type}")
