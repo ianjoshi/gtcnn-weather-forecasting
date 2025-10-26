@@ -63,73 +63,69 @@ def build_spatial_edges(H: int, W: int, periodic_lon: bool = True, neighborhood:
 
     return torch.tensor(edges, dtype=torch.long).t().contiguous()
 
-
 def build_spatio_temporal_edges(H: int, W: int, T: int,
                                 periodic_lon: bool = True,
                                 neighborhood: int = 4,
                                 graph_type: str = "cartesian"):
     """
-    Build edges for a spatio-temporal graph over an HxW grid sequence of length T.
+    Efficient, vectorized construction of spatio-temporal edges.
 
-    - Always includes spatial edges within each timestep (from build_spatial_edges).
-    - Temporal edges differ depending on `graph_type`:
-
-      * cartesian: 
-          Each node at time t connects only to itself at time t+1 
-          (temporal self-links).
-      * strong:
-          Each node at time t connects to its spatial neighbors at time t+1 
-          (spatio-temporal neighbor propagation).
-
-    Args:
-        H (int): Grid height
-        W (int): Grid width
-        T (int): Sequence length (timesteps)
-        periodic_lon (bool): If True, wrap around longitude boundaries
-        neighborhood (int): 4 or 8 spatial neighbors
-        graph_type (str): "cartesian" or "strong"
-
-    Returns:
-        torch.Tensor: Edge indices with shape [2, total_edges]
+    - Spatial edges: within each timestep.
+    - Temporal edges:
+        * "cartesian": node_t → node_{t+1}
+        * "strong": node_t → itself_{t+1} and neighbors_{t+1}
     """
     spatial_edges = build_spatial_edges(H, W, periodic_lon, neighborhood)
-    all_edges = []
+    num_nodes_per_t = H * W
 
-    for t in range(T):
-        offset = t * H * W
-        # --- Spatial edges at timestep t ---
-        edges_t = spatial_edges + offset
-        all_edges.append(edges_t)
+    # Spatial edges for all timesteps 
+    spatial_offsets = torch.arange(T) * num_nodes_per_t
+    spatial_edges_all = (
+        spatial_edges.unsqueeze(0) + spatial_offsets.view(-1, 1, 1)
+    ).reshape(-1, 2).t()  # shape [2, T * num_spatial_edges]
 
-        if t < T - 1:
-            next_offset = (t + 1) * H * W
+    # Temporal edges 
+    if T > 1:
+        # Offsets between consecutive timesteps
+        t_offsets = torch.arange(T - 1) * num_nodes_per_t
+        next_offsets = t_offsets + num_nodes_per_t
 
-            if graph_type == "cartesian":
-                # Temporal edges: self-links only (node_t to node_{t+1})
-                for i in range(H * W):
-                    all_edges.append(
-                        torch.tensor([[offset + i], [next_offset + i]], dtype=torch.long)
-                    )
+        # Cartesian temporal edges (self to self) 
+        self_edges = torch.arange(num_nodes_per_t)
+        self_edges = torch.stack([
+            self_edges.repeat(T - 1) + t_offsets.repeat_interleave(num_nodes_per_t),
+            self_edges.repeat(T - 1) + next_offsets.repeat_interleave(num_nodes_per_t)
+        ])
 
-            elif graph_type == "strong":
-                # Connect node_t -> neighbor_{t+1}
-                edges_next = spatial_edges + next_offset
-                strong_edges = torch.vstack([
-                    edges_next[0] - H * W,
-                    edges_next[1]
-                ])
-                all_edges.append(strong_edges)
+        if graph_type == "cartesian":
+            temporal_edges_all = self_edges
 
-                # Also connect node_t -> itself_{t+1}
-                for i in range(H * W):
-                    all_edges.append(
-                        torch.tensor([[offset + i], [next_offset + i]], dtype=torch.long)
-                    )
+        elif graph_type == "strong":
+            # Neighbor-to-next-timestep edges 
+            edges_next = spatial_edges + num_nodes_per_t  # shift to next timestep indices
+            num_spatial_edges = edges_next.shape[1]
 
-            else:
-                raise ValueError(f"Unknown graph_type: {graph_type}")
+            # Repeat spatial pattern for all T-1 transitions
+            t_offsets = torch.arange(T - 1, device=edges_next.device) * num_nodes_per_t
 
-    return torch.cat(all_edges, dim=1)  
+            src_offsets = t_offsets.repeat_interleave(num_spatial_edges)
+            dst_offsets = t_offsets.repeat_interleave(num_spatial_edges)
+
+            strong_edges = torch.vstack([
+                (edges_next[0].repeat(T - 1) + src_offsets),
+                (edges_next[1].repeat(T - 1) + dst_offsets)
+            ])
+
+            # Combine self and neighbor links
+            temporal_edges_all = torch.cat([self_edges, strong_edges], dim=1)
+        else:
+            raise ValueError(f"Unknown graph_type: {graph_type}")
+    else:
+        temporal_edges_all = torch.empty((2, 0), dtype=torch.long)
+
+    # Combine all
+    return torch.cat([spatial_edges_all, temporal_edges_all], dim=1).contiguous()
+  
 
 
 def to_spatio_temporal_graph(X: torch.Tensor, y: torch.Tensor,
