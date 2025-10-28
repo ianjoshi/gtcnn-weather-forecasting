@@ -1,0 +1,10 @@
+Performance Report for GTCNN
+Checkpoint: checkpoints\best_gtcnn.pt
+==================================================
+       MSE: 0.002452
+       MAE: 0.036923
+      RMSE: 0.049519
+        R2: 0.910210
+      Loss: 0.002452
+Evaluation time: 75.157372
+==================================================

@@ -1,0 +1,10 @@
+Performance Report for CNN3D
+Checkpoint: checkpoints\best_cnn3d.pt
+==================================================
+       MSE: 0.003420
+       MAE: 0.041312
+      RMSE: 0.058477
+        R2: 0.874784
+      Loss: 0.003420
+Evaluation time: 13.544858
+==================================================
