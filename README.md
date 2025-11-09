@@ -1,6 +1,6 @@
 # Weather Forecasting with Graph Neural Networks
 
-A deep learning project that leverages Graph Neural Networks (GNNs) for weather forecasting using ERA5 climate data. This project implements both traditional and advanced graph-based models to predict weather patterns across a global grid.
+A deep learning project that leverages Graph Neural Networks (GNNs) for weather forecasting using ERA5 climate data. This project implements both traditional and advanced graph-based models to predict weather patterns across a global grid. Investigating physics loss and scalability conscious graph ml implementations.
 
 ## Project Overview
 
