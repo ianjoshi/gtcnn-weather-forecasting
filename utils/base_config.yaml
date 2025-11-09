@@ -29,10 +29,9 @@ training:
   early_stopping: 3
   learning_rate: 0.001
   weight_decay: 1e-5
-
-  lambda_ke: 0.01                # weight for kinetic energy loss
-  ke_mode: "pointwise"           # options: "pointwise", "global", or "both"
-  ke_use_truth: true             # toggles what we're comparing our pred_ke to
+  lambda_ke: 0.01                  # weight for kinetic energy loss
+  ke_mode: "pointwise"             # options: "pointwise", "global", or "both"
+  ke_use_truth: true               # toggles what we're comparing our pred_ke to
   ke_compare_to_last_input: false  # only "true" if we want to conserve ke from the previous timestep, as opposed to...
                                    # the current ground truth (when ke_use_truth == true, ke_compare_to_last_input is
                                    # always false, and vice versa)
@@ -42,5 +41,5 @@ training:
 graph:
   input_length: 7
   forecast_horizon: 1
-  neighborhood: 4            # 4 or 8
-  type: "strong"             # strong or cartesian             
+  neighborhood: 4         # 4 or 8
+  type: "strong"          # strong or cartesian             

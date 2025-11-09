@@ -31,7 +31,7 @@ This project uses spatio-temporal graph neural networks to perform weather forec
     ```
 
 2. Create and activate the conda environment:
-    ```powershell
+    ```bash
     conda env create -f utils/environment.yml
     conda activate weather-cast
     ```
@@ -54,21 +54,58 @@ The data is split into the following time periods:
 
 ### Training
 
-To train the model:
+To train a model, use:
 
 ```bash
-python scripts/train.py 
+python scripts/train.py [--model_type {gtcnn,sign,cnn3d}] [--physics_loss] [--save_name NAME] [--assert_shapes]
 ```
-You can also input the model type. Default is set to GTCNN. The other choices include 3D CNN.
+
+**Train script options:**
+- `--model_type`: Select the model architecture. Choices are:
+  - `gtcnn` (default): Graph-temporal convolutional neural network
+  - `sign`: Spatial-Identity Graph Neural Network
+  - `cnn3d`: 3D convolutional neural network (grid baseline)
+- `--physics_loss` (optional): Adds a physics-based kinetic energy loss term (only for GTCNN).
+- `--save_name`: Custom name for the checkpoint and summary files (default: uses the model type).
+- `--assert_shapes`: Enables checks for tensor shapes on the first batch (for debugging purposes).
+
+Model and training hyperparameters (such as input length, layers, epochs, learning rate) should be set in the YAML configuration files under `utils/`. See the Configuration section below.
+
+Example:
+```bash
+python scripts/train.py --model_type gtcnn --physics_loss --save_name my_run
+```
+
+---
 
 ### Evaluation
 
-To evaluate the model:
+To evaluate a trained model or run a baseline, use:
 
 ```bash
-python scripts/evaluate.py 
+python scripts/evaluate.py [--model_type {gtcnn,sign,cnn3d,persistence,climatology}] [--checkpoint PATH] [--model_category {graph_based,grid_based}] [--save_name REPORT_NAME]
 ```
-You can also input the model type and the checkpoint. Default is set to GTCNN. The other choices include 3D CNN and two baselines (persistance and climatology).
+
+**Evaluate script options:**
+- `--model_type`: Select the evaluation model. Choices are:
+  - `gtcnn`: Graph-temporal CNN (requires checkpoint)
+  - `sign`: Identity-based GNN (requires checkpoint)
+  - `cnn3d`: Grid-based 3D CNN (requires checkpoint)
+  - `persistence`: Baseline—uses last input as prediction
+  - `climatology`: Baseline—uses daily climatology
+- `--checkpoint`: Path to the `.pt` model checkpoint. If not specified for a neural model, uses `checkpoints/best_<model>.pt`.
+- `--model_category`: Dataset input format. Choices are:
+  - `graph_based` (default): For GTCNN/SIGN models
+  - `grid_based`: For CNN3D
+- `--save_name`: Custom name for the output report (default: `report_{model_type}.txt` in `./reports/`).
+
+Example:
+```bash
+python scripts/evaluate.py --model_type cnn3d --checkpoint ./checkpoints/best_cnn3d.pt --model_category grid_based --save_name my_cnn3d_eval
+```
+
+See the configuration files for model and data options under `utils/`. Detailed evaluation metrics are saved in `./reports/`.
+
 
 ### Configuration
 
@@ -101,6 +138,7 @@ Key options you will commonly change:
 │   ├── train.py               # Training loop 
 │   └── evaluate.py            # Evaluation and reporting utilities
 ├── checkpoints/               # Saved model weights (best model files)
+├── training_summaries/        # Training summary text files
 ├── plotters/                  # Plotting helpers
 │   └── metrics_plotter.py     
 ├── plots/                     # Generated figures 
@@ -114,7 +152,7 @@ Key options you will commonly change:
 
 ## Checkpoints and Reports
 
-THe training script saves the best model under `./checkpoints` and the evaluation script outputs the performance reports under `./reports` summarising results for the model.
+THe training script saves the best model under `./checkpoints/` and a summary in `./training_summaries/`. The evaluation script outputs the performance reports under `./reports/` summarising results for the model.
 
 ## License
 

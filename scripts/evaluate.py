@@ -226,7 +226,11 @@ def main():
     test_loader = get_dataloaders(config=config, model_category=category, eval_mode=True)
     C_in = test_loader.dataset.in_channels
     C_out = test_loader.dataset.out_channels 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = (
+        torch.device("mps") if torch.backends.mps.is_available()
+        else torch.device("cuda") if torch.cuda.is_available()
+        else torch.device("cpu")
+    )
     print("Using device:", device)
 
     # Model selection

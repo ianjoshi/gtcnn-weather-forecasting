@@ -1,0 +1,5 @@
+Training Summary for CNN3D
+Best model saved to: C:\Users\yaren\OneDrive\Desktop\Yaren's\TU Delft\Masters\Q5\Graph Machine Learning\graph-ml-g12\checkpoints\best_cnn3d.pt
+Best validation loss: 0.0035
+Total training time: 40.91 minutes (2454.87s)
+Total epochs trained: 20
