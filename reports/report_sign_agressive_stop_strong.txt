@@ -1,0 +1,10 @@
+Performance Report for SIGN
+Checkpoint: checkpoints/sign_agressive_stop_strong.pt
+==================================================
+       MSE: 0.000638
+       MAE: 0.016566
+      RMSE: 0.025267
+        R2: 0.976622
+      Loss: 0.000638
+Evaluation time: 22.840623
+==================================================
